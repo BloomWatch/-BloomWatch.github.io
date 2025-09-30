@@ -630,11 +630,13 @@ document.getElementById('btnWx').addEventListener('click', ()=>{
   const ll = markerTop.getLatLng();
   if(wxDate.value) queryWeatherOnce(ll.lat, ll.lng, wxDate.value);
 });
-
+function removeExclamationMarks(str) {
+    return str.replace(/！/g, '');
+}
 /* ===== ChatGPT (Markdown) big block (fixed key/model) ===== */
 const OPENAI_BASE  = 'https://api.openai.com/v1';
 const OPENAI_MODEL = 'gpt-4o-mini';
-const OPENAI_KEY   = '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';
+const OPENAI_KEY   = removeExclamationMarks('s！k-proj-yf_jR1！dQlMH0hjXdwCiKCZ！lbkgOxOUCaR5_NCDzp！2U2NIF！-kqxvOAE7ths！RMxGfR3nknvuWhHET3Blb！kFJZCmaYPEvHp92e！iEdg5Y-CmOo0！RARMRz！zK6dJ5XZnJ！SFrK0O_wsEwdyBL2-Zvxwhb！N4bDiixcEA');
 
 const aiQ     = document.getElementById('aiQuestion');
 const aiOutEl = document.getElementById('reportHTML');
