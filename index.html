@@ -10,7 +10,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.css"/>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <!-- Plotly (time series) -->
@@ -51,6 +51,18 @@
   th{color:#a7bacf;text-align:left}
   td input{width:100%;padding:6px;border:1px solid #334155;background:#0b1220;color:#e5e7eb;border-radius:6px}
   .ok{color:#22c55e}.warn{color:#f59e0b}.bad{color:#ef4444}
+
+  /* Vegetation vigor color classes */
+  .vig-verylow{color:#9ca3af}
+  .vig-low{color:#f59e0b}
+  .vig-medium{color:#60a5fa}
+  .vig-high{color:#34d399}
+  .vig-veryhigh{color:#22d3ee}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
+  .b-good{background:#064e3b;color:#a7f3d0}
+  .b-marg{background:#78350f;color:#fde68a}
+  .b-snow{background:#334155;color:#cbd5e1}
+  .b-cloud{background:#4b5563;color:#e5e7eb}
 
   /* AI big block under the 3-column area */
   #ai-block-wrapper{grid-column:1/-1;padding:12px 16px 18px;background:#0b1220;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
@@ -150,6 +162,37 @@
         <label class="row">Max pages<input id="inatMaxPages" type="number" value="5" min="1" max="20" style="width:60px"/></label>
       </div>
       <div id="inatStats" class="muted" style="margin-top:4px">—</div>
+    </div>
+
+    <!-- MOVED HERE: Vegetation Indices (NDVI/EVI) -->
+    <div class="card" style="margin-top:12px">
+      <h3>Vegetation Indices (NDVI/EVI)</h3>
+      <div class="row" style="margin-bottom:6px">
+        <label>Product</label>
+        <select id="viProduct">
+          <option value="MOD13Q1">MOD13Q1 · MODIS Terra · 16-day (250m)</option>
+          <option value="VNP13A1">VNP13A1 · VIIRS SNPP · 16-day (500m)</option>
+        </select>
+        <button id="btnVI" class="btn">Query VI (latest)</button>
+      </div>
+      <div class="mono" id="viMeta">Date: — (—), Tile: —</div>
+      <div class="mono" id="viQual" style="margin-top:4px">Quality: —</div>
+      <div class="mono" id="viVigor" style="margin-top:4px">Vigor: —</div>
+      <table style="margin-top:6px">
+        <thead><tr><th>Var</th><th>Value</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td>NDVI</td><td id="viNDVI">—</td><td>[-1,1]</td></tr>
+          <tr><td>EVI</td><td id="viEVI">—</td><td>[-1,~1]</td></tr>
+          <tr><td>Red</td><td id="viRED">—</td><td>reflectance</td></tr>
+          <tr><td>NIR</td><td id="viNIR">—</td><td>reflectance</td></tr>
+          <tr><td>Blue</td><td id="viBLUE">—</td><td>reflectance</td></tr>
+          <tr><td>MIR</td><td id="viMIR">—</td><td>reflectance</td></tr>
+          <tr><td>Sun Zenith</td><td id="viSZA">—</td><td>deg</td></tr>
+          <tr><td>View Zenith</td><td id="viVZA">—</td><td>deg</td></tr>
+          <tr><td>Rel. Azimuth</td><td id="viRAA">—</td><td>deg</td></tr>
+          <tr><td>Composite DOY</td><td id="viDOY">—</td><td>day-of-year</td></tr>
+        </tbody>
+      </table>
     </div>
   </aside>
 
@@ -607,6 +650,137 @@ async function queryWeatherOnce(lat,lon,isoDate){
   }
 }
 
+/* ===== Vegetation Indices (ORNL RST API) ===== */
+const RST = 'https://modis.ornl.gov/rst/api/v1';
+const viProductSEL = document.getElementById('viProduct');
+const btnVI = document.getElementById('btnVI');
+const viMeta = document.getElementById('viMeta');
+const viQual = document.getElementById('viQual');
+const viVigor= document.getElementById('viVigor');
+const viNDVI= document.getElementById('viNDVI');
+const viEVI = document.getElementById('viEVI');
+const viRED = document.getElementById('viRED');
+const viNIR = document.getElementById('viNIR');
+const viBLUE= document.getElementById('viBLUE');
+const viMIR = document.getElementById('viMIR');
+const viSZA = document.getElementById('viSZA');
+const viVZA = document.getElementById('viVZA');
+const viRAA = document.getElementById('viRAA');
+const viDOY = document.getElementById('viDOY');
+
+async function fetchDates(product, lat, lon){
+  const url = `${RST}/${product}/dates?latitude=${lat}&longitude=${lon}`;
+  const r = await fetch(url); if(!r.ok) throw new Error('dates HTTP '+r.status);
+  return r.json();
+}
+async function fetchSubset(product, lat, lon, aStart, aEnd){
+  const url = `${RST}/${product}/subset?latitude=${lat}&longitude=${lon}&startDate=${aStart}&endDate=${aEnd}&kmAboveBelow=0&kmLeftRight=0`;
+  const r = await fetch(url); if(!r.ok) throw new Error('subset HTTP '+r.status);
+  return r.json();
+}
+function scaleValue(bandName, raw){
+  if(raw==null) return null;
+  const n = Number(raw);
+  if(n <= -9000) return null; // fill / invalid
+  const b = (bandName||'').toLowerCase();
+  if(b.includes('reflectance')) return n * 0.0001;
+  if(b.includes('ndvi') || b.includes('evi')) return n * 0.0001;
+  if(b.includes('zenith') || b.includes('azimuth')) return n * 0.01;
+  return n;
+}
+function fmt(v, digits=4){ return (v==null || isNaN(v)) ? '—' : (+v).toFixed(digits); }
+function parseSubsetObj(json){
+  const out = {};
+  const arr = json?.subset || [];
+  for(const item of arr){
+    const key = (item.band || '').toLowerCase();
+    const val = Array.isArray(item.data) ? item.data[0] : item.data;
+    out[key] = { date: item.calendar_date || item.modis_date, raw: val, scaled: scaleValue(key, val) };
+  }
+  return { grid: out, tile: arr[0]?.tile || '—', modis_date: arr[0]?.modis_date || null, calendar_date: arr[0]?.calendar_date || null };
+}
+function pixelReliabilityBadge(code){
+  const m = {0:['Good','b-good'],1:['Marginal','b-marg'],2:['Snow/Ice','b-snow'],3:['Cloud','b-cloud']};
+  const k = m[Number(code)] || ['Unknown',''];
+  return `<span class="badge ${k[1]}">${k[0]} (${code})</span>`;
+}
+function vigorClass(ndvi){
+  if(ndvi==null || isNaN(ndvi)) return {label:'Unknown', cls:'vig-verylow'};
+  if(ndvi < 0.2) return {label:'Very Low (bare/urban)', cls:'vig-verylow'};
+  if(ndvi < 0.3) return {label:'Low', cls:'vig-low'};
+  if(ndvi < 0.5) return {label:'Medium', cls:'vig-medium'};
+  if(ndvi < 0.7) return {label:'High', cls:'vig-high'};
+  return {label:'Very High', cls:'vig-veryhigh'};
+}
+
+/* Ensure latest VI for current point (used by button & AI analysis) */
+async function ensureVI(lat, lon, product){
+  try{
+    const dates = await fetchDates(product, lat, lon);
+    const arr = dates?.dates || [];
+    if(!arr.length) throw new Error('No composite dates here');
+    const lastA = arr[arr.length-1]?.modis_date || arr[arr.length-1];
+    const j = await fetchSubset(product, lat, lon, lastA, lastA);
+    if(!(j?.subset?.length)) throw new Error('Empty subset');
+    const P = parseSubsetObj(j);
+    const G = P.grid;
+    const pick = kw => {
+      const k = Object.keys(G).find(x => x.includes(kw));
+      return k ? G[k] : {scaled:null, raw:null};
+    };
+    const ndvi = pick('ndvi').scaled;
+    const evi  = pick('evi').scaled;
+    const red  = pick('red_reflectance').scaled;
+    const nir  = pick('nir_reflectance').scaled;
+    const blue = pick('blue_reflectance').scaled;
+    const mir  = pick('mir_reflectance').scaled;
+    const sza  = pick('sun_zenith').scaled;
+    const vza  = pick('view_zenith').scaled;
+    const raa  = pick('relative_azimuth').scaled;
+    const rel  = (pick('pixel_reliability').raw);
+    const viq  = (pick('vi_quality').raw);
+    const doy  = (pick('composite_day_of_the_year').raw);
+
+    // Update UI
+    viMeta.textContent = `Date: ${P.calendar_date || '—'} (${P.modis_date || '—'}), Tile: ${P.tile}`;
+    viQual.innerHTML   = (rel!=null) ? pixelReliabilityBadge(rel) + (viq!=null? ` · VI_Quality=${viq}`:'') : (viq!=null? `VI_Quality=${viq}`:'—');
+    const vg = vigorClass(ndvi);
+    viVigor.innerHTML  = `<span class="${vg.cls}">${vg.label}</span> (NDVI=${fmt(ndvi,3)})`;
+
+    viNDVI.textContent = fmt(ndvi,4);
+    viEVI.textContent  = fmt(evi,4);
+    viRED.textContent  = fmt(red,4);
+    viNIR.textContent  = fmt(nir,4);
+    viBLUE.textContent = fmt(blue,4);
+    viMIR.textContent  = fmt(mir,4);
+    viSZA.textContent  = fmt(sza,2);
+    viVZA.textContent  = fmt(vza,2);
+    viRAA.textContent  = fmt(raa,2);
+    viDOY.textContent  = (doy==null?'—':String(doy));
+
+    // Save for GPT
+    window._lastVI = {
+      product, lat, lon,
+      date: P.calendar_date || null, a_date: P.modis_date || null, tile: P.tile,
+      ndvi, evi, red, nir, blue, mir, sza, vza, raa, rel, viq, doy,
+      vigor: vg.label
+    };
+    return window._lastVI;
+  }catch(e){
+    viMeta.textContent = 'Date: — (—), Tile: —';
+    viQual.textContent = 'Quality: —';
+    viVigor.textContent= 'Vigor: —';
+    viNDVI.textContent = viEVI.textContent = viRED.textContent = viNIR.textContent = '—';
+    viBLUE.textContent = viMIR.textContent = viSZA.textContent = viVZA.textContent = viRAA.textContent = viDOY.textContent = '—';
+    console.error(e);
+    return null;
+  }
+}
+btnVI.addEventListener('click', ()=>{
+  const ll = markerTop.getLatLng();
+  ensureVI(ll.lat, ll.lng, viProductSEL.value);
+});
+
 /* ===== Current point & refresh (also resolve address for GPT) ===== */
 const curLatLon = document.getElementById('curLatLon');
 function setCurrentPoint(lat,lon){
@@ -633,6 +807,7 @@ document.getElementById('btnWx').addEventListener('click', ()=>{
 function removeExclamationMarks(str) {
     return str.replace(/！/g, '');
 }
+
 /* ===== ChatGPT (Markdown) big block (fixed key/model) ===== */
 const OPENAI_BASE  = 'https://api.openai.com/v1';
 const OPENAI_MODEL = 'gpt-4o-mini';
@@ -670,15 +845,23 @@ function buildAnalysisPrompt(){
     last30 = {meanT, sumP};
   }
 
-  return `You are a horticulture & ecological suitability advisor. Use Markdown in all replies.
-Location: (${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}), Year: ${y}
+  // Vegetation Indices summary (if available)
+  const VI = window._lastVI || null;
+  const viText = VI ? `VI (${VI.product}) ${VI.date||VI.a_date||''} — NDVI=${(VI.ndvi??'—')}, EVI=${(VI.evi??'—')}, vigor=${VI.vigor}; red=${VI.red??'—'}, nir=${VI.nir??'—'}, blue=${VI.blue??'—'}, mir=${VI.mir??'—'}; quality pixel_reliability=${VI.rel??'—'}, VI_Quality=${VI.viq??'—'}` : '(VI not queried yet)';
+
+  return `Location: (${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}), Year: ${y}
 Address: ${addr}
+
+Vegetation indices (latest from ORNL RST):
+${viText}
+
 Flowers (base/GDD and predicted):
-${rows.length? rows.map(r=>`- ${r.name}: Base=${r.base}°C, GDD=${r.thr}, Predicted=${r.pred}`).join('\n') : '(no valid flower parameters provided)'}
-Last-30-day summary: ${last30 ? `Mean T ≈ ${last30.meanT==null?'—':last30.meanT.toFixed(1)}°C, Total precip ≈ ${last30.sumP.toFixed(1)} mm` : '(not available)'}
-Task:
-1) Recommend plants by groups (**Easy to succeed**, **Worth trying**, **Not recommended**) with reasons.
-2) Give short management tips (sowing/transplant window, irrigation, mulching, pest/disease risks).`;
+${rows.length ? rows.map(r=>`- ${r.name}: Base=${r.base}°C, GDD=${r.thr}, Predicted=${r.pred}`).join('\n') : '(no valid flower parameters provided)'}
+
+Last-30-day weather summary (POWER):
+${last30 ? `Mean T ≈ ${last30.meanT==null?'—':last30.meanT.toFixed(1)}°C; Total precip ≈ ${last30.sumP.toFixed(1)} mm` : '(not available)'}
+
+Please provide a detailed interpretation **in Markdown** as an agronomy and phenology expert. Using the local data above (vegetation indices, recent temperature/precipitation, and the flower GDD table), analyze which plants or flowers are suitable to grow here, explain your reasoning, and mention any caveats.`;
 }
 function renderMarkdown(md){
   const safe = DOMPurify.sanitize(marked.parse(md || ''));
@@ -704,7 +887,22 @@ async function callChat(messages){
   }
 }
 document.getElementById('btnAIAnalyze').addEventListener('click', async ()=>{
-  const sys = {role:'system', content:'You are a horticulture & ecological suitability advisor. Use Markdown in all replies.'};
+  const ll = markerTop.getLatLng();
+
+  // Ensure VI available for current point & selected product
+  if(!window._lastVI || Math.hypot(window._lastVI.lat-ll.lat, window._lastVI.lon-ll.lng)>1e-6 || window._lastVI.product!==viProductSEL.value){
+    await ensureVI(ll.lat, ll.lng, viProductSEL.value);
+  }
+  // Ensure last-30-day POWER series available (for summary)
+  const yr = parseInt(inpYear.value,10);
+  if(!window._lastDaily || window._lastDaily.lat!==ll.lat || window._lastDaily.lon!==ll.lng || window._lastDaily.year!==yr){
+    try{
+      const daily = await fetchPOWERDaily(ll.lat, ll.lng, yr);
+      window._lastDaily = {lat: ll.lat, lon: ll.lng, year: yr, daily};
+    }catch(_){ /* proceed even if missing */ }
+  }
+
+  const sys = {role:'system', content:'You are an agronomy and phenology expert. Please reply in Markdown. Using the local data provided, give a detailed interpretation and analyze which plants or flowers are suitable to grow here.'};
   const user = {role:'user', content: buildAnalysisPrompt()};
   chatHistory = [sys, user];
   renderMarkdown('_Analyzing…_');
@@ -717,7 +915,12 @@ document.getElementById('btnAIAnalyze').addEventListener('click', async ()=>{
 document.getElementById('btnAIAsk').addEventListener('click', async ()=>{
   const q = aiQ.value.trim() || 'Please refine the planting windows and specific varieties based on the above analysis.';
   if(chatHistory.length===0){
-    const sys = {role:'system', content:'You are a horticulture & ecological suitability advisor. Use Markdown in all replies.'};
+    // Ensure a baseline context if user asks before Analyze
+    const ll = markerTop.getLatLng();
+    if(!window._lastVI || Math.hypot(window._lastVI.lat-ll.lat, window._lastVI.lon-ll.lng)>1e-6 || window._lastVI.product!==viProductSEL.value){
+      await ensureVI(ll.lat, ll.lng, viProductSEL.value);
+    }
+    const sys = {role:'system', content:'You are an agronomy and phenology expert. Please reply in Markdown. Using the local data provided, give a detailed interpretation and analyze which plants or flowers are suitable to grow here.'};
     const user0= {role:'user', content: buildAnalysisPrompt()};
     chatHistory = [sys, user0];
   }
@@ -732,6 +935,3 @@ document.getElementById('btnAIAsk').addEventListener('click', async ()=>{
 </script>
 </body>
 </html>
-
-
-
