@@ -1,937 +1,564 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>BloomWatch</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BloomWatch - Phenology Monitor</title>
 
-<!-- Leaflet & plugins -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.css"/>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.css"/>
 
-<!-- Plotly (time series) -->
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <!-- Main stylesheet -->
+  <link rel="stylesheet" href="style.css"/>
+  <!-- New: styles for OpenPortGuide & GIBS controls -->
+  <link rel="stylesheet" href="opg-gibs.css"/>
 
-<!-- Markdown rendering for ChatGPT -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-
-<style>
-  :root{--bg:#0f172a;--card:#0b1220;--muted:#94a3b8;--border:#374151;--accent:#f59e0b;--ok:#22c55e;--warn:#ef4444;--gray:#6b7280}
-  html,body{height:100%;margin:0;background:var(--bg);color:#e5e7eb;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto}
-  #app{display:grid;grid-template-columns:380px 1fr 460px;grid-template-rows:auto 1fr auto;min-height:100vh}
-  header{grid-column:1/-1;padding:12px 16px;background:#0b1220;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-  header h1{margin:0;font-size:18px;color:#fbbf24}
-  header small{color:#9ca3af}
-  aside,.right{background:var(--card);border-right:1px solid var(--border)}
-  aside{padding:16px}
-  .right{padding:16px;border-left:1px solid var(--border)}
-  h2{margin:8px 0 12px 0;font-size:16px}
-  h3{margin:8px 0 8px 0;font-size:14px;color:#cbd5e1}
-  label{font-size:12px;color:var(--muted)}
-  input,select,button,textarea{font-size:14px}
-  .ctrl{margin-bottom:14px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .mono{font-family:ui-monospace,Menlo,Consolas,monospace}
-  .btn{padding:8px 10px;border:1px solid var(--border);background:#0b1220;color:#e5e7eb;border-radius:8px;cursor:pointer}
-  .btn:hover{border-color:#475569}
-  .btn-pri{background:#065f46;border-color:#10b981}
-  .btn-warn{background:#3f1c1c;border-color:#ef4444}
-  .card{background:#0b1220;border:1px solid var(--border);border-radius:12px;padding:10px}
-  .muted{color:var(--muted);font-size:12px}
-  main{padding:16px;border-right:1px solid var(--border)}
-  #mapTop,#mapBottom{height:40vh;border-radius:12px;border:1px solid var(--border)}
-  #mapBottom{margin-top:10px}
-  table{width:100%;border-collapse:collapse}
-  th,td{border-bottom:1px solid #263043;padding:6px 6px;font-size:13px}
-  th{color:#a7bacf;text-align:left}
-  td input{width:100%;padding:6px;border:1px solid #334155;background:#0b1220;color:#e5e7eb;border-radius:6px}
-  .ok{color:#22c55e}.warn{color:#f59e0b}.bad{color:#ef4444}
-
-  /* Vegetation vigor color classes */
-  .vig-verylow{color:#9ca3af}
-  .vig-low{color:#f59e0b}
-  .vig-medium{color:#60a5fa}
-  .vig-high{color:#34d399}
-  .vig-veryhigh{color:#22d3ee}
-  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px}
-  .b-good{background:#064e3b;color:#a7f3d0}
-  .b-marg{background:#78350f;color:#fde68a}
-  .b-snow{background:#334155;color:#cbd5e1}
-  .b-cloud{background:#4b5563;color:#e5e7eb}
-
-  /* AI big block under the 3-column area */
-  #ai-block-wrapper{grid-column:1/-1;padding:12px 16px 18px;background:#0b1220;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-  #ai-block{max-width:980px;margin:0 auto}
-  #reportHTML{background:#0b1220;border:1px solid var(--border);border-radius:8px;padding:10px;min-height:220px}
-  #reportHTML h1,#reportHTML h2,#reportHTML h3{color:#e5e7eb}
-  #reportHTML code{background:#111827;padding:2px 4px;border-radius:4px}
-
-  footer{grid-column:1/-1;border-top:1px solid var(--border);padding:10px 16px;background:#0b1220;font-size:12px;color:#cbd5e1}
-</style>
+  <!-- Plotly for charts -->
+  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
 </head>
 <body>
 <div id="app">
+  <!-- Header -->
   <header>
-    <div class="row">
-      <span style="width:32px;height:32px;border-radius:50%;background:var(--accent);display:inline-block"></span>
-      <div style="margin-left:10px">
+    <div class="header-content">
+      <div class="logo-section">
+        <div class="logo-icon"></div>
         <h1>BloomWatch</h1>
-        <small>iNaturalist real flower photos • NASA GIBS basemap • POWER point weather • 8-flower phenology • AI</small>
       </div>
+      <button id="menu-toggle" class="menu-toggle" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
     </div>
-    <div class="row"><span class="btn" style="pointer-events:none;border-color:#475569">Live data</span></div>
   </header>
 
-  <!-- LEFT: controls -->
-  <aside>
-    <h2>GIBS Overlay (Main Map)</h2>
-    <div class="ctrl">
-      <label>Layer</label><br/>
-      <select id="selLayer" style="width:100%">
-        <option value="VIIRS_SNPP_CorrectedReflectance_TrueColor|jpg|1">VIIRS SNPP True Color (daily)</option>
-        <option value="VIIRS_NOAA20_CorrectedReflectance_TrueColor|jpg|1">VIIRS NOAA-20 True Color (daily)</option>
-        <option value="MODIS_Terra_CorrectedReflectance_TrueColor|jpg|1">MODIS Terra True Color (daily)</option>
-        <option value="MODIS_Aqua_CorrectedReflectance_TrueColor|jpg|1">MODIS Aqua True Color (daily)</option>
-        <option value="STD_OSM|zxy|1">Standard map (no overlay)</option>
-      </select>
+  <!-- Main map area -->
+  <main>
+    <!-- Split container for single/dual map -->
+    <div id="map-wrap" class="map-wrap">
+      <div id="map" class="map-pane"></div>
+      <div id="map-b" class="map-pane hidden"></div>
     </div>
-    <div class="ctrl">
-      <label>Year</label><br/>
-      <input id="inpYear" type="number" class="mono" value=""/>
+  </main>
+
+  <!-- Side menu -->
+  <nav id="main-menu" class="main-menu">
+    <div class="menu-header">
+      <h2>Menu</h2>
+      <button id="menu-close" class="menu-close" aria-label="Close menu">×</button>
     </div>
-    <div class="ctrl">
-      <label>Date (by cadence)</label><br/>
-      <input id="slDate" type="range" min="0" max="10" value="0" style="width:100%"/>
-      <div id="lblDate" class="muted mono"></div>
-    </div>
-    <div class="ctrl">
-      <label>Opacity</label><br/>
-      <input id="slOpacity" type="range" min="0" max="1" step="0.05" value="0.8" style="width:100%"/>
+    <ul class="menu-list">
+      <li><a href="#" data-panel="layers">Layers</a></li>
+      <li><a href="#" data-panel="photos">Flower Photos</a></li>
+      <li><a href="#" data-panel="vegetation">Vegetation Index</a></li>
+      <li><a href="#" data-panel="phenology">Phenology</a></li>
+      <li><a href="#" data-panel="weather">Weather</a></li>
+      <li><a href="#" data-panel="forecast">ML Forecast</a></li>
+      <li><a href="#" data-panel="ai">AI Assistant</a></li>
+    </ul>
+  </nav>
+
+  <!-- Panels -->
+  <!-- Layers panel -->
+  <div id="layers-panel" class="panel">
+    <div class="panel-header">
+      <h3>Layers</h3>
+      <button class="panel-close" aria-label="Close panel">×</button>
     </div>
 
-    <h2 style="margin-top:18px">GIBS Overlay (Comparison Map)</h2>
-    <div class="ctrl">
-      <label>Layer</label><br/>
-      <select id="selLayer2" style="width:100%">
-        <option value="VIIRS_SNPP_CorrectedReflectance_TrueColor|jpg|1" selected>VIIRS SNPP True Color (daily)</option>
-        <option value="VIIRS_NOAA20_CorrectedReflectance_TrueColor|jpg|1">VIIRS NOAA-20 True Color (daily)</option>
-        <option value="MODIS_Terra_CorrectedReflectance_TrueColor|jpg|1">MODIS Terra True Color (daily)</option>
-        <option value="MODIS_Aqua_CorrectedReflectance_TrueColor|jpg|1">MODIS Aqua True Color (daily)</option>
-        <option value="STD_OSM|zxy|1">Standard map (no overlay)</option>
-      </select>
-    </div>
-    <div class="ctrl">
-      <label>Year</label><br/>
-      <input id="inpYear2" type="number" class="mono" value=""/>
-    </div>
-    <div class="ctrl">
-      <label>Date (by cadence)</label><br/>
-      <input id="slDate2" type="range" min="0" max="10" value="0" style="width:100%"/>
-      <div id="lblDate2" class="muted mono"></div>
-    </div>
-    <div class="ctrl">
-      <label>Opacity</label><br/>
-      <input id="slOpacity2" type="range" min="0" max="1" step="0.05" value="0.8" style="width:100%"/>
-    </div>
+    <div class="panel-content">
+      <!-- Compare toggle -->
+      <div class="control-group">
+        <label>Dual-map Compare</label>
+        <div class="button-group">
+          <button id="compare-on" class="btn">Enable Compare</button>
+          <button id="compare-off" class="btn">Disable Compare</button>
+        </div>
+        <div class="date-label">
+          When enabled, both maps can be configured independently. View and selected marker stay synchronized.
+        </div>
+      </div>
 
-    <!-- Real flower photos -->
-    <div class="card" style="margin-top:12px">
-      <h3>Real Flower Photos (iNaturalist)</h3>
-      <div class="row">
-        <button id="btnINatOn" class="btn btn-pri">Turn on</button>
-        <button id="btnINatOff" class="btn">Turn off</button>
-        <label class="row"><input id="chkINatHeat" type="checkbox"/>Heatmap</label>
+      <!-- Map A controls (primary) -->
+      <div class="control-group">
+        <label>Map A · Base Layer</label>
+        <select id="main-layer">
+          <option value="VIIRS_SNPP_CorrectedReflectance_TrueColor|jpg|1">VIIRS SNPP True Color (Daily)</option>
+          <option value="VIIRS_NOAA20_CorrectedReflectance_TrueColor|jpg|1">VIIRS NOAA-20 True Color (Daily)</option>
+          <option value="MODIS_Terra_CorrectedReflectance_TrueColor|jpg|1">MODIS Terra True Color (Daily)</option>
+          <option value="MODIS_Aqua_CorrectedReflectance_TrueColor|jpg|1">MODIS Aqua True Color (Daily)</option>
+          <option value="STD_OSM|zxy|1">Standard OSM (No overlay)</option>
+        </select>
       </div>
-      <div class="row" style="margin-top:6px">
-        <label>Time</label>
-        <input id="inatStart" type="date" style="width:150px"/>
-        <span class="muted">to</span>
-        <input id="inatEnd" type="date" style="width:150px"/>
+
+      <div class="control-group">
+        <label>Map A · Year</label>
+        <input id="layer-year" type="number" value="2024" min="2000" max="2100">
       </div>
-      <div class="row" style="margin-top:6px">
+
+      <div class="control-group">
+        <label>Map A · Date</label>
+        <input id="layer-date" type="range" min="0" max="10" value="0">
+        <div id="layer-date-label" class="date-label">2024-01-01</div>
+      </div>
+
+      <div class="control-group">
+        <label>Map A · Overlay Opacity</label>
+        <input id="layer-opacity" type="range" min="0" max="1" step="0.05" value="0.8">
+      </div>
+
+      <!-- Map A · OpenPortGuide (overlay) -->
+      <div class="control-group group-opg">
+        <label>Map A · OpenPortGuide (overlay)</label>
+        <div class="two">
+          <select id="opg-a-var" class="inline">
+            <option value="wind_stream">wind_stream</option>
+            <option value="wind_barb">wind_barb</option>
+            <option value="gust">gust</option>
+            <option value="surface_pressure">surface_pressure</option>
+            <option value="air_temperature">air_temperature</option>
+            <option value="precipitation">precipitation</option>
+            <option value="precipitation_shaded">precipitation_shaded</option>
+            <option value="significant_wave_height">significant_wave_height</option>
+            <option value="primary_wave_height_direction">primary_wave_height_direction</option>
+            <option value="primary_wave_period">primary_wave_period</option>
+          </select>
+          <select id="opg-a-step" class="inline">
+            <option>0h</option><option>6h</option><option>12h</option><option>24h</option>
+            <option>36h</option><option>48h</option><option>60h</option><option>72h</option>
+          </select>
+        </div>
+        <div class="two">
+          <button id="opg-a-add" class="btn btn-primary">Add to Map A</button>
+          <button id="opg-a-remove" class="btn">Remove</button>
+        </div>
+        <div class="two">
+          <button id="opg-a-copy" class="btn">Copy Tile URL</button>
+          <span class="hint">XYZ global tiles. Step “0h” = latest.</span>
+        </div>
+      </div>
+
+      <!-- Map A · NASA GIBS — WMS (overlay) -->
+      <div class="control-group group-gibs">
+        <label>Map A · NASA GIBS — WMS (overlay)</label>
+        <div class="two">
+          <select id="wms-a-proj" class="inline">
+            <option value="3857">EPSG:3857</option>
+            <option value="4326">EPSG:4326</option>
+          </select>
+          <select id="wms-a-format" class="inline">
+            <option value="image/png">image/png</option>
+            <option value="image/jpeg">image/jpeg</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <select id="wms-a-layer">
+            <option value="MODIS_Aqua_Land_Surface_Temp_Day">MODIS Aqua LST Day</option>
+            <option value="MODIS_Terra_Land_Surface_Temp_Night">MODIS Terra LST Night</option>
+            <option value="VIIRS_SNPP_Land_Surface_Temp_Day">VIIRS SNPP Land Surface Temp Day</option>
+            <option value="VIIRS_SNPP_Land_Surface_Temp_Night">VIIRS SNPP Land Surface Temp Night</option>
+            <option value="VIIRS_SNPP_NDVI_8Day">VIIRS SNPP NDVI 8Day</option>
+            <option value="VIIRS_SNPP_EVI_8Day">VIIRS SNPP EVI 8Day</option>
+            <option value="Convective_Rainwater_Source">Convective Rainwater Source</option>
+          </select>
+        </div>
+        <div class="two">
+          <input id="wms-a-time" type="text" class="inline" placeholder="TIME (optional, YYYY-MM-DD)">
+          <button id="wms-a-add" class="btn btn-primary">Add to Map A</button>
+        </div>
+        <div class="two">
+          <button id="wms-a-remove" class="btn">Remove</button>
+          <button id="wms-a-copy" class="btn">Copy GetMap URL</button>
+        </div>
+        <div class="date-label">If TIME is empty, the app will use the latest/last time from capabilities with fallback.</div>
+      </div>
+
+      <!-- Map B controls (visible only when compare is enabled) -->
+      <div id="layer-controls-b" class="compare-b hidden">
+        <div class="control-group">
+          <label>Map B · Base Layer</label>
+          <select id="main-layer-b">
+            <option value="VIIRS_SNPP_CorrectedReflectance_TrueColor|jpg|1">VIIRS SNPP True Color (Daily)</option>
+            <option value="VIIRS_NOAA20_CorrectedReflectance_TrueColor|jpg|1">VIIRS NOAA-20 True Color (Daily)</option>
+            <option value="MODIS_Terra_CorrectedReflectance_TrueColor|jpg|1">MODIS Terra True Color (Daily)</option>
+            <option value="MODIS_Aqua_CorrectedReflectance_TrueColor|jpg|1">MODIS Aqua True Color (Daily)</option>
+            <option value="STD_OSM|zxy|1">Standard OSM (No overlay)</option>
+          </select>
+        </div>
+
+        <div class="control-group">
+          <label>Map B · Year</label>
+          <input id="layer-year-b" type="number" value="2024" min="2000" max="2100">
+        </div>
+
+        <div class="control-group">
+          <label>Map B · Date</label>
+          <input id="layer-date-b" type="range" min="0" max="10" value="0">
+          <div id="layer-date-label-b" class="date-label">2024-01-01</div>
+        </div>
+
+        <div class="control-group">
+          <label>Map B · Overlay Opacity</label>
+          <input id="layer-opacity-b" type="range" min="0" max="1" step="0.05" value="0.8">
+        </div>
+
+        <!-- Map B · OpenPortGuide (overlay) -->
+        <div class="control-group group-opg">
+          <label>Map B · OpenPortGuide (overlay)</label>
+          <div class="two">
+            <select id="opg-b-var" class="inline">
+              <option value="wind_stream">wind_stream</option>
+              <option value="wind_barb">wind_barb</option>
+              <option value="gust">gust</option>
+              <option value="surface_pressure">surface_pressure</option>
+              <option value="air_temperature">air_temperature</option>
+              <option value="precipitation">precipitation</option>
+              <option value="precipitation_shaded">precipitation_shaded</option>
+              <option value="significant_wave_height">significant_wave_height</option>
+              <option value="primary_wave_height_direction">primary_wave_height_direction</option>
+              <option value="primary_wave_period">primary_wave_period</option>
+            </select>
+            <select id="opg-b-step" class="inline">
+              <option>0h</option><option>6h</option><option>12h</option><option>24h</option>
+              <option>36h</option><option>48h</option><option>60h</option><option>72h</option>
+            </select>
+          </div>
+          <div class="two">
+            <button id="opg-b-add" class="btn btn-primary">Add to Map B</button>
+            <button id="opg-b-remove" class="btn">Remove</button>
+          </div>
+          <div class="two">
+            <button id="opg-b-copy" class="btn">Copy Tile URL</button>
+            <span class="hint">XYZ global tiles. Step “0h” = latest.</span>
+          </div>
+        </div>
+
+        <!-- Map B · NASA GIBS — WMS (overlay) -->
+        <div class="control-group group-gibs">
+          <label>Map B · NASA GIBS — WMS (overlay)</label>
+          <div class="two">
+            <select id="wms-b-proj" class="inline">
+              <option value="3857">EPSG:3857</option>
+              <option value="4326">EPSG:4326</option>
+            </select>
+            <select id="wms-b-format" class="inline">
+              <option value="image/png">image/png</option>
+              <option value="image/jpeg">image/jpeg</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <select id="wms-b-layer">
+              <option value="MODIS_Aqua_Land_Surface_Temp_Day">MODIS Aqua LST Day</option>
+              <option value="MODIS_Terra_Land_Surface_Temp_Night">MODIS Terra LST Night</option>
+              <option value="VIIRS_SNPP_Land_Surface_Temp_Day">VIIRS SNPP Land Surface Temp Day</option>
+              <option value="VIIRS_SNPP_Land_Surface_Temp_Night">VIIRS SNPP Land Surface Temp Night</option>
+              <option value="VIIRS_SNPP_NDVI_8Day">VIIRS SNPP NDVI 8Day</option>
+              <option value="VIIRS_SNPP_EVI_8Day">VIIRS SNPP EVI 8Day</option>
+              <option value="Convective_Rainwater_Source">Convective Rainwater Source</option>
+            </select>
+          </div>
+          <div class="two">
+            <input id="wms-b-time" type="text" class="inline" placeholder="TIME (optional, YYYY-MM-DD)">
+            <button id="wms-b-add" class="btn btn-primary">Add to Map B</button>
+          </div>
+          <div class="two">
+            <button id="wms-b-remove" class="btn">Remove</button>
+            <button id="wms-b-copy" class="btn">Copy GetMap URL</button>
+          </div>
+          <div class="date-label">If TIME is empty, the app will use the latest/last time from capabilities with fallback.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Photos panel -->
+  <div id="photos-panel" class="panel">
+    <div class="panel-header">
+      <h3>Flower Photos (iNaturalist)</h3>
+      <button class="panel-close" aria-label="Close panel">×</button>
+    </div>
+    <div class="panel-content">
+      <div class="control-group">
+        <div class="button-group">
+          <button id="photos-on" class="btn btn-primary">Enable</button>
+          <button id="photos-off" class="btn">Disable</button>
+        </div>
+        <label class="checkbox-label">
+          <input id="photos-heatmap" type="checkbox"> Heatmap mode
+        </label>
+      </div>
+      <div class="control-group">
+        <label>Date range</label>
+        <div class="date-range">
+          <input id="photos-start" type="date">
+          <span>to</span>
+          <input id="photos-end" type="date">
+        </div>
+      </div>
+      <div class="control-group">
         <label>Taxon</label>
-        <select id="inatTaxon" style="min-width:220px">
+        <select id="photos-taxon">
           <option value="47125">Angiosperms (default)</option>
           <option value="47126">Plantae (all plants)</option>
         </select>
-        <label class="row">Max pages<input id="inatMaxPages" type="number" value="5" min="1" max="20" style="width:60px"/></label>
       </div>
-      <div id="inatStats" class="muted" style="margin-top:4px">—</div>
+      <div class="control-group">
+        <label>Max pages</label>
+        <input id="photos-max-pages" type="number" value="5" min="1" max="20">
+      </div>
+      <div class="control-group">
+        <label>Search radius (km, from selected point)</label>
+        <input id="photos-radius" type="number" value="25" min="1" max="200">
+      </div>
+      <div id="photos-stats" class="stats">—</div>
     </div>
+  </div>
 
-    <!-- MOVED HERE: Vegetation Indices (NDVI/EVI) -->
-    <div class="card" style="margin-top:12px">
-      <h3>Vegetation Indices (NDVI/EVI)</h3>
-      <div class="row" style="margin-bottom:6px">
+  <!-- Vegetation panel -->
+  <div id="vegetation-panel" class="panel">
+    <div class="panel-header">
+      <h3>Vegetation Index (NDVI/EVI)</h3>
+      <button class="panel-close" aria-label="Close panel">×</button>
+    </div>
+    <div class="panel-content">
+      <div class="control-group">
         <label>Product</label>
-        <select id="viProduct">
+        <select id="vi-product">
           <option value="MOD13Q1">MOD13Q1 · MODIS Terra · 16-day (250m)</option>
           <option value="VNP13A1">VNP13A1 · VIIRS SNPP · 16-day (500m)</option>
         </select>
-        <button id="btnVI" class="btn">Query VI (latest)</button>
+        <button id="vi-query" class="btn btn-primary">Query Latest</button>
       </div>
-      <div class="mono" id="viMeta">Date: — (—), Tile: —</div>
-      <div class="mono" id="viQual" style="margin-top:4px">Quality: —</div>
-      <div class="mono" id="viVigor" style="margin-top:4px">Vigor: —</div>
-      <table style="margin-top:6px">
-        <thead><tr><th>Var</th><th>Value</th><th>Note</th></tr></thead>
+      <div class="vi-info">
+        <div id="vi-meta" class="info-line">Date: —, Tile: —</div>
+        <div id="vi-quality" class="info-line">Quality: —</div>
+        <div id="vi-vigor" class="info-line">Vigor: —</div>
+      </div>
+      <table class="vi-table">
+        <thead>
+        <tr><th>Variable</th><th>Value</th><th>Note</th></tr>
+        </thead>
         <tbody>
-          <tr><td>NDVI</td><td id="viNDVI">—</td><td>[-1,1]</td></tr>
-          <tr><td>EVI</td><td id="viEVI">—</td><td>[-1,~1]</td></tr>
-          <tr><td>Red</td><td id="viRED">—</td><td>reflectance</td></tr>
-          <tr><td>NIR</td><td id="viNIR">—</td><td>reflectance</td></tr>
-          <tr><td>Blue</td><td id="viBLUE">—</td><td>reflectance</td></tr>
-          <tr><td>MIR</td><td id="viMIR">—</td><td>reflectance</td></tr>
-          <tr><td>Sun Zenith</td><td id="viSZA">—</td><td>deg</td></tr>
-          <tr><td>View Zenith</td><td id="viVZA">—</td><td>deg</td></tr>
-          <tr><td>Rel. Azimuth</td><td id="viRAA">—</td><td>deg</td></tr>
-          <tr><td>Composite DOY</td><td id="viDOY">—</td><td>day-of-year</td></tr>
+        <tr><td>NDVI</td><td id="vi-ndvi">—</td><td>[-1, 1]</td></tr>
+        <tr><td>EVI</td><td id="vi-evi">—</td><td>[-1, ~1]</td></tr>
+        <tr><td>Red</td><td id="vi-red">—</td><td>Reflectance</td></tr>
+        <tr><td>NIR</td><td id="vi-nir">—</td><td>Reflectance</td></tr>
+        <tr><td>Blue</td><td id="vi-blue">—</td><td>Reflectance</td></tr>
+        <tr><td>MIR</td><td id="vi-mir">—</td><td>Reflectance</td></tr>
         </tbody>
       </table>
     </div>
-  </aside>
+  </div>
 
-  <!-- CENTER: two stacked maps -->
-  <main>
-    <div id="mapTop"></div>
-    <div id="mapBottom"></div>
-  </main>
-
-  <!-- RIGHT: analysis, chart, same-day weather -->
-  <section class="right">
-    <h2>Phenology Analysis & Forecast (8 flowers)</h2>
-
-    <div class="card">
-      <div class="row" style="justify-content:space-between">
-        <div>
-          <div class="muted">Current point</div>
-          <div id="curLatLon" class="mono"></div>
+  <!-- Phenology panel -->
+  <div id="phenology-panel" class="panel">
+    <div class="panel-header">
+      <h3>Phenology & Prediction</h3>
+      <button class="panel-close" aria-label="Close panel">×</button>
+    </div>
+    <div class="panel-content">
+      <div class="control-group">
+        <div class="current-location">
+          <span class="label">Current location</span>
+          <span id="current-coords" class="coords">—</span>
         </div>
-        <button id="btnCalc8" class="btn btn-pri">Compute forecasts from daily data</button>
+        <button id="phenology-calc" class="btn btn-primary">Compute Bloom Prediction</button>
       </div>
-      <div style="max-height:240px;overflow:auto;margin-top:8px">
-        <table id="tblFlowers">
+      <div class="flowers-table-container">
+        <table id="flowers-table" class="flowers-table">
           <thead>
-            <tr><th>Flower</th><th>Base temp (°C)</th><th>GDD threshold</th><th>Predicted date</th><th>Accum. days</th></tr>
+          <tr>
+            <th>Flower</th>
+            <th>Base Temp (°C)</th>
+            <th>GDD Threshold</th>
+            <th>Predicted Date</th>
+            <th>Accumulated Days</th>
+          </tr>
           </thead>
           <tbody>
-            <!-- Custom (empty by default) -->
-            <tr data-name="Custom">
-              <td>Custom</td>
-              <td><input type="number" placeholder=""/></td>
-              <td><input type="number" placeholder=""/></td>
-              <td class="pred">—</td><td class="days">—</td>
-            </tr>
-            <tr data-name="Cherry Blossom"><td>Cherry Blossom</td><td><input type="number" value="5"/></td><td><input type="number" value="220"/></td><td class="pred">—</td><td class="days">—</td></tr>
-            <tr data-name="Tulip"><td>Tulip</td><td><input type="number" value="0"/></td><td><input type="number" value="120"/></td><td class="pred">—</td><td class="days">—</td></tr>
-            <tr data-name="Winter Jasmine"><td>Winter Jasmine</td><td><input type="number" value="5"/></td><td><input type="number" value="100"/></td><td class="pred">—</td><td class="days">—</td></tr>
-            <tr data-name="Plum Blossom"><td>Plum Blossom</td><td><input type="number" value="4"/></td><td><input type="number" value="180"/></td><td class="pred">—</td><td class="days">—</td></tr>
-            <tr data-name="Peach Blossom"><td>Peach Blossom</td><td><input type="number" value="4"/></td><td><input type="number" value="250"/></td><td class="pred">—</td><td class="days">—</td></tr>
-            <tr data-name="Rapeseed (Canola)"><td>Rapeseed (Canola)</td><td><input type="number" value="5"/></td><td><input type="number" value="300"/></td><td class="pred">—</td><td class="days">—</td></tr>
-            <tr data-name="Wisteria"><td>Wisteria</td><td><input type="number" value="5"/></td><td><input type="number" value="350"/></td><td class="pred">—</td><td class="days">—</td></tr>
-            <tr data-name="Rose"><td>Rose</td><td><input type="number" value="10"/></td><td><input type="number" value="450"/></td><td class="pred">—</td><td class="days">—</td></tr>
+          <tr data-name="Custom">
+            <td>Custom</td>
+            <td><input type="number" placeholder=""></td>
+            <td><input type="number" placeholder=""></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Cherry Blossom">
+            <td>Cherry Blossom</td>
+            <td><input type="number" value="5"></td>
+            <td><input type="number" value="220"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Tulip">
+            <td>Tulip</td>
+            <td><input type="number" value="0"></td>
+            <td><input type="number" value="120"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Winter Jasmine">
+            <td>Winter Jasmine</td>
+            <td><input type="number" value="5"></td>
+            <td><input type="number" value="100"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Plum Blossom">
+            <td>Plum Blossom</td>
+            <td><input type="number" value="4"></td>
+            <td><input type="number" value="180"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Peach Blossom">
+            <td>Peach Blossom</td>
+            <td><input type="number" value="4"></td>
+            <td><input type="number" value="250"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Rapeseed">
+            <td>Rapeseed</td>
+            <td><input type="number" value="5"></td>
+            <td><input type="number" value="300"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Wisteria">
+            <td>Wisteria</td>
+            <td><input type="number" value="5"></td>
+            <td><input type="number" value="350"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
+          <tr data-name="Rose">
+            <td>Rose</td>
+            <td><input type="number" value="10"></td>
+            <td><input type="number" value="450"></td>
+            <td class="pred">—</td>
+            <td class="days">—</td>
+          </tr>
           </tbody>
         </table>
       </div>
     </div>
+  </div>
 
-    <div class="card" style="margin-top:10px">
-      <h3>Same-day Weather (NASA POWER point)</h3>
-      <div class="row">
-        <label>Date</label>
-        <input id="wxDate" type="date" style="width:160px"/>
-        <button id="btnWx" class="btn">Query</button>
+  <!-- Weather panel -->
+  <div id="weather-panel" class="panel">
+    <div class="panel-header">
+      <h3>Weather (NASA POWER)</h3>
+      <button class="panel-close" aria-label="Close panel">×</button>
+    </div>
+    <div class="panel-content">
+      <div class="control-group">
+        <label>Query date</label>
+        <div class="date-query">
+          <input id="weather-date" type="date">
+          <button id="weather-query" class="btn">Query</button>
+        </div>
       </div>
-      <div id="wxNow" class="mono" style="margin-top:6px">T2M: — °C, Precip: — mm</div>
-      <div class="muted" style="margin-top:6px">POWER has ~1–2 day latency; try yesterday / 2 days ago.</div>
+      <div id="weather-current" class="weather-info">Temp: — °C, Precip: — mm</div>
+      <div class="weather-note">POWER data lags by 1–2 days; try querying yesterday or the day before.</div>
+      <div id="weather-chart" class="chart-container"></div>
     </div>
+  </div>
 
-    <div class="card" style="margin-top:10px">
-      <h3>Daily Temperature / Precipitation (POWER)</h3>
-      <div id="chart" style="height:300px"></div>
+  <!-- AI panel -->
+  <div id="ai-panel" class="panel">
+    <div class="panel-header">
+      <h3>AI Assistant</h3>
+      <button class="panel-close" aria-label="Close panel">×</button>
     </div>
-  </section>
-
-  <!-- BIG centered ChatGPT block BELOW the 3-column area -->
-  <section id="ai-block-wrapper">
-    <div id="ai-block">
-      <h2 style="margin:6px 0 12px 0">AI Reports & Advice</h2>
-      <div class="row" style="margin-top:6px">
-        <button id="btnAIAnalyze" class="btn btn-pri">Analyze: suitable plants here?</button>
-        <button id="btnAIAsk" class="btn">Ask / follow up</button>
+    <div class="panel-content">
+      <div class="control-group">
+        <div class="button-group">
+          <button id="ai-analyze" class="btn btn-primary">Analyze: What to plant here?</button>
+          <button id="ai-ask" class="btn">Ask / Follow up</button>
+        </div>
       </div>
-      <textarea id="aiQuestion" rows="2" style="width:100%;margin-top:8px" placeholder="Type a question to ask AI (optional)…"></textarea>
-      <div id="reportHTML" style="margin-top:8px"></div>
+      <div class="control-group">
+        <textarea id="ai-question" rows="3" placeholder="Type your question (optional)…"></textarea>
+      </div>
+      <div id="ai-report" class="ai-report"></div>
     </div>
-  </section>
+  </div>
 
-  <footer>
-    Sources: iNaturalist (photos/observations), NASA GIBS (WMTS basemap), NASA POWER (point daily weather). GDD forecasts are a demo parameter model—please calibrate to your region/species.
-  </footer>
+<!-- Forecast panel -->
+<div id="forecast-panel" class="panel">
+  <div class="panel-header">
+    <h3>NDVI/EVI Forecast (30 days)</h3>
+    <button class="panel-close" aria-label="Close panel">×</button>
+  </div>
+  <div class="panel-content">
+    <div class="control-group">
+      <label>Product</label>
+      <select id="fc-product">
+        <option value="MOD13Q1">MOD13Q1 · MODIS Terra · 16-day (250m)</option>
+        <option value="VNP13A1">VNP13A1 · VIIRS SNPP · 16-day (500m)</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Target Index</label>
+      <select id="fc-target">
+        <option value="ndvi">NDVI</option>
+        <option value="evi">EVI</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>History length (years)</label>
+      <input id="fc-years" type="number" value="3" min="1" max="8"/>
+      <div class="date-label">We’ll pull ~16-day composites over N years and align with daily POWER weather.</div>
+    </div>
+
+    <div class="control-group">
+      <label>Training options</label>
+      <div class="date-range">
+        <input id="fc-epochs" type="number" value="120" min="20" max="1000"/>
+        <span>epochs</span>
+        <input id="fc-lr" type="number" value="0.01" step="0.005" min="0.001" max="0.1"/>
+        <span>learning rate</span>
+      </div>
+      <div class="date-label">If TensorFlow.js is unavailable, a linear baseline fallback will be used.</div>
+    </div>
+
+    <div class="control-group">
+      <div class="button-group">
+        <button id="fc-train" class="btn btn-primary">Train + Forecast</button>
+        <button id="fc-clear" class="btn">Clear</button>
+      </div>
+    </div>
+
+    <div id="fc-stats" class="stats">—</div>
+    <div id="fc-chart" style="height: 320px; margin-top: 1rem;"></div>
+    <div class="weather-note">Inputs: historical NDVI/EVI (MODIS/VIIRS) + daily POWER T2M & Precip; engineered features include lag values & seasonal encodings.</div>
+  </div>
 </div>
 
-<script>
-/* ===== Utilities ===== */
-const OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-const GIBS_TM = 'GoogleMapsCompatible_Level9';
-const GIBS_URL = (layer, date, ext) =>
-  `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/${layer}/default/${date}/${GIBS_TM}/{z}/{y}/{x}.${ext}`;
-const YEAR = new Date().getUTCFullYear();
-const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
-function genDates(year, step){
-  const arr=[]; const d0=new Date(`${year}-01-01`), d1=new Date(`${year}-12-31`);
-  for(let d=new Date(d0); d<=d1; d.setDate(d.getDate()+step)){ arr.push(d.toISOString().slice(0,10)); }
-  if(arr[arr.length-1]!==`${year}-12-31`) arr.push(`${year}-12-31`);
-  return arr;
-}
-function doyToDate(year,doy){ const d=new Date(Date.UTC(year,0,1)); d.setUTCDate(doy); return d.toISOString().slice(0,10); }
-function numOrNull(v){ const n=Number(v); if(!Number.isFinite(n)) return null; if(n<=-900) return null; return n; }
 
-/* ===== Icons: selected point vs flower (SVG, no external files) ===== */
-const ICON_SELECTED = L.icon({
-  iconUrl:
-    'data:image/svg+xml;utf8,' +
-    encodeURIComponent(`
-    <svg width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="18" cy="18" r="16" fill="#0ea5e9" fill-opacity="0.15" stroke="#38bdf8" stroke-width="2"/>
-      <circle cx="18" cy="18" r="6" fill="#38bdf8"/>
-      <circle cx="18" cy="18" r="2.5" fill="white"/>
-    </svg>`),
-  iconSize: [36, 36],
-  iconAnchor: [18, 18],
-  popupAnchor: [0, -18]
-});
+  <!-- Overlay -->
+  <div id="overlay" class="overlay"></div>
+</div>
 
-const ICON_FLOWER = L.icon({
-  iconUrl:
-    'data:image/svg+xml;utf8,' +
-    encodeURIComponent(`
-    <svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
-      <g transform="translate(14,14)">
-        <circle r="4" fill="#f59e0b"/>
-        <g fill="#ef4444">
-          <circle cx="0" cy="-8" r="4"/>
-          <circle cx="0" cy="8" r="4"/>
-          <circle cx="8" cy="0" r="4"/>
-          <circle cx="-8" cy="0" r="4"/>
-          <circle cx="5.7" cy="-5.7" r="3.6"/>
-          <circle cx="-5.7" cy="-5.7" r="3.6"/>
-          <circle cx="5.7" cy="5.7" r="3.6"/>
-          <circle cx="-5.7" cy="5.7" r="3.6"/>
-        </g>
-      </g>
-    </svg>`),
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
-  popupAnchor: [0, -14]
-});
+<!-- JS libraries -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<!-- Markdown parser for AI output -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
-/* ===== Reverse geocoding (address for GPT only; not shown in UI) ===== */
-const _addrCache = new Map();
-const _addrKey = (lat,lon)=>`${lat.toFixed(4)},${lon.toFixed(4)}`;
-async function reverseGeocode(lat, lon, lang='en') {
-  const key=_addrKey(lat,lon);
-  if(_addrCache.has(key)) return _addrCache.get(key);
-  const timeout = (ms)=> new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms));
-  const bdc = fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=${lang}`)
-               .then(r=>r.ok?r.json():Promise.reject(new Error('bdc http '+r.status)))
-               .then(j=>{
-                 const parts=[j.locality,j.city,j.principalSubdivision,j.countryName].filter(Boolean);
-                 if(!parts.length) throw new Error('bdc empty');
-                 return [...new Set(parts)].join(', ');
-               });
-  const nom = fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`)
-               .then(r=>r.ok?r.json():Promise.reject(new Error('nom http '+r.status)))
-               .then(j=> j.display_name || 'Address unavailable');
-  let addr='Address unavailable';
-  try { addr = await Promise.race([bdc, timeout(4000)]); }
-  catch(_){ try { addr = await Promise.race([nom, timeout(4000)]); } catch(__){} }
-  _addrCache.set(key, addr);
-  return addr;
-}
+<!-- App script -->
+<script src="app.js" defer></script>
+<script src="opg-gibs-overlays.js" defer></script>
 
-/* ===== Map init: two stacked maps ===== */
-const INIT = { lat: 34.7, lon: -118.3, zoom: 6 };
+<!-- ML script -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script src="./forecast.js"></script>
 
-const mapTop = L.map('mapTop', { zoomControl:true, scrollWheelZoom:true }).setView([INIT.lat, INIT.lon], INIT.zoom);
-const baseTop = L.tileLayer(OSM, { attribution:'&copy; OpenStreetMap' }).addTo(mapTop);
-let overlayTop = null;
-const markerTop = L.marker([INIT.lat, INIT.lon], { icon: ICON_SELECTED }).addTo(mapTop);
 
-const mapBottom = L.map('mapBottom', { zoomControl:true, scrollWheelZoom:true }).setView([INIT.lat, INIT.lon], INIT.zoom);
-const baseBottom = L.tileLayer(OSM, { attribution:'&copy; OpenStreetMap' }).addTo(mapBottom);
-let overlayBottom = null;
-const markerBottom = L.marker([INIT.lat, INIT.lon], { icon: ICON_SELECTED }).addTo(mapBottom);
-
-/* Click either map to set current point & refresh */
-mapTop.on('click', e => { markerTop.setLatLng(e.latlng); setCurrentPoint(e.latlng.lat, e.latlng.lng); });
-mapBottom.on('click', e => { markerBottom.setLatLng(e.latlng); setCurrentPoint(e.latlng.lat, e.latlng.lng); });
-
-/* ===== Controls (Main Map) ===== */
-document.getElementById('inpYear').value = YEAR;
-const selLayer = document.getElementById('selLayer');
-const slDate = document.getElementById('slDate');
-const lblDate = document.getElementById('lblDate');
-const slOpacity = document.getElementById('slOpacity');
-const inpYear = document.getElementById('inpYear');
-let dates1 = [];
-
-function makeTile(optionValue, dateISO, opacity=0.8){
-  const [layer, ext] = optionValue.split('|');
-  if(layer === 'STD_OSM'){
-    return L.tileLayer(OSM, { attribution:'&copy; OpenStreetMap', opacity });
-  }
-  return L.tileLayer(GIBS_URL(layer,dateISO,ext), {opacity, attribution:'NASA GIBS'});
-}
-function updateOverlayTop(){
-  const [ , , stepStr] = selLayer.value.split('|');
-  const step = parseInt(stepStr,10);
-  dates1 = genDates(parseInt(inpYear.value,10), step);
-  slDate.max = String(dates1.length-1);
-  if(+slDate.value > dates1.length-1) slDate.value = String(dates1.length-1);
-  const date = dates1[+slDate.value];
-  lblDate.textContent = `Date: ${date}`;
-  if(overlayTop) mapTop.removeLayer(overlayTop);
-  overlayTop = makeTile(selLayer.value, date, parseFloat(slOpacity.value));
-  overlayTop.addTo(mapTop);
-}
-selLayer.addEventListener('change', updateOverlayTop);
-slDate.addEventListener('input', updateOverlayTop);
-slOpacity.addEventListener('input', ()=>{ if(overlayTop) overlayTop.setOpacity(parseFloat(slOpacity.value)) });
-inpYear.addEventListener('change', updateOverlayTop);
-
-/* ===== Controls (Comparison Map) ===== */
-document.getElementById('inpYear2').value = YEAR;
-const selLayer2 = document.getElementById('selLayer2');
-const slDate2 = document.getElementById('slDate2');
-const lblDate2 = document.getElementById('lblDate2');
-const slOpacity2 = document.getElementById('slOpacity2');
-const inpYear2 = document.getElementById('inpYear2');
-let dates2 = [];
-
-function updateOverlayBottom(){
-  const [ , , stepStr] = selLayer2.value.split('|');
-  const step = parseInt(stepStr,10);
-  dates2 = genDates(parseInt(inpYear2.value,10), step);
-  slDate2.max = String(dates2.length-1);
-  if(+slDate2.value > dates2.length-1) slDate2.value = String(dates2.length-1);
-  const date = dates2[+slDate2.value];
-  lblDate2.textContent = `Date: ${date}`;
-  if(overlayBottom) mapBottom.removeLayer(overlayBottom);
-  overlayBottom = makeTile(selLayer2.value, date, parseFloat(slOpacity2.value));
-  overlayBottom.addTo(mapBottom);
-}
-selLayer2.addEventListener('change', updateOverlayBottom);
-slDate2.addEventListener('input', updateOverlayBottom);
-slOpacity2.addEventListener('input', ()=>{ if(overlayBottom) overlayBottom.setOpacity(parseFloat(slOpacity2.value)) });
-inpYear2.addEventListener('change', updateOverlayBottom);
-
-/* Initialize overlays once */
-updateOverlayTop();
-updateOverlayBottom();
-
-/* ===== iNaturalist (on MAIN MAP only) ===== */
-const inatStats = document.getElementById('inatStats');
-const chkINatHeat = document.getElementById('chkINatHeat');
-const inatStart = document.getElementById('inatStart');
-const inatEnd = document.getElementById('inatEnd');
-const inatTaxon = document.getElementById('inatTaxon');
-const inatMaxPages = document.getElementById('inatMaxPages');
-(function initINatDates(){
-  const today = new Date(), end = today.toISOString().slice(0,10);
-  const start = new Date(today.getTime()-29*86400000).toISOString().slice(0,10);
-  inatStart.value=start; inatEnd.value=end;
-})();
-let inatActive=false, inatMoveHandler=null, inatIndex=new Map();
-let inatLayerCluster=null, inatHeat=null;
-
-function clearINatLayer(){
-  inatIndex.clear();
-  if(inatLayerCluster){ mapTop.removeLayer(inatLayerCluster); inatLayerCluster=null; }
-  if(inatHeat){ mapTop.removeLayer(inatHeat); inatHeat=null; }
-  inatStats.textContent='—';
-}
-function ensureINatLayers(){
-  if(chkINatHeat.checked){
-    if(!inatHeat) inatHeat = L.heatLayer([], {radius:22, blur:16, maxZoom:10}).addTo(mapTop);
-    if(inatLayerCluster){ mapTop.removeLayer(inatLayerCluster); inatLayerCluster=null; }
-  }else{
-    if(!inatLayerCluster) inatLayerCluster = L.markerClusterGroup({disableClusteringAtZoom: 12});
-    if(!mapTop.hasLayer(inatLayerCluster)) mapTop.addLayer(inatLayerCluster);
-    if(inatHeat){ mapTop.removeLayer(inatHeat); inatHeat=null; }
-  }
-}
-async function fetchINatPage(bb, d1, d2, taxonId, page, perPage=200){
-  const url = new URL('https://api.inaturalist.org/v1/observations');
-  url.search = new URLSearchParams({
-    verifiable:'true', quality_grade:'research',
-    taxon_id:String(taxonId||47125),
-    term_id:'12', term_value_id:'13',
-    d1:d1, d2:d2, order:'desc', order_by:'observed_on',
-    per_page:String(perPage), page:String(page),
-    nelat:String(bb.getNorth()), nelng:String(bb.getEast()),
-    swlat:String(bb.getSouth()), swlng:String(bb.getWest())
-  }).toString();
-  const r = await fetch(url.toString()); if(!r.ok) throw new Error('iNat '+r.status);
-  const j = await r.json(); return j?.results||[];
-}
-function renderINat(){
-  if(chkINatHeat.checked){
-    if(!inatHeat) return;
-    const pts = Array.from(inatIndex.values()).map(r=>[r.lat,r.lon,1]);
-    inatHeat.setLatLngs(pts);
-  }else{
-    if(!inatLayerCluster) return;
-    inatLayerCluster.clearLayers();
-    for(const r of inatIndex.values()){
-      const m = L.marker([r.lat,r.lon], { icon: ICON_FLOWER })
-        .bindPopup(`<b>${r.species||'—'}</b><br/>${r.date||''}<br/><a href="${r.url}" target="_blank">iNaturalist</a>${r.thumb?('<br/><img src="'+r.thumb+'" style="width:120px;border-radius:6px;margin-top:4px"/>'):''}`);
-      inatLayerCluster.addLayer(m);
-    }
-  }
-}
-async function loadINatForBounds(){
-  if(!inatActive) return;
-  const bb = mapTop.getBounds();
-  const d1 = inatStart.value, d2 = inatEnd.value, taxon = parseInt(inatTaxon.value,10);
-  const maxPages = clamp(parseInt(inatMaxPages.value,10)||5,1,20);
-  ensureINatLayers();
-  let added=0, pages=0;
-  try{
-    for(let page=1; page<=maxPages; page++){
-      const arr = await fetchINatPage(bb,d1,d2,taxon,page,200);
-      pages++;
-      if(!arr.length) break;
-      for(const o of arr){
-        const id = o.id; if(inatIndex.has(id)) continue;
-        const lat = o.geojson?.coordinates?.[1] ?? o.location?.split(',')[0];
-        const lon = o.geojson?.coordinates?.[0] ?? o.location?.split(',')[1];
-        if(!Number.isFinite(+lat) || !Number.isFinite(+lon)) continue;
-        const tax = o.taxon?.preferred_common_name || o.taxon?.name || '—';
-        const date = (o.observed_on_details?.date || o.observed_on || '').slice(0,10);
-        const url = o.uri || (`https://www.inaturalist.org/observations/${id}`);
-        const thumb = (o.photos && o.photos[0]?.url)? o.photos[0].url.replace('square','small'): null;
-        inatIndex.set(id, {lat:+lat,lon:+lon,species:tax,date,url,thumb});
-        added++;
-      }
-      renderINat();
-    }
-  }catch(e){ console.error(e); }
-  inatStats.textContent = `Loaded ${inatIndex.size} records (added ${added}, pages ${pages}/${inatMaxPages.value}).`;
-}
-document.getElementById('btnINatOn').addEventListener('click', ()=>{
-  if(inatActive) return; inatActive = true;
-  clearINatLayer(); ensureINatLayers(); loadINatForBounds();
-  inatMoveHandler = ()=>{ loadINatForBounds(); }; mapTop.on('moveend', inatMoveHandler);
-});
-document.getElementById('btnINatOff').addEventListener('click', ()=>{
-  inatActive=false; if(inatMoveHandler){ mapTop.off('moveend', inatMoveHandler); inatMoveHandler=null; }
-  clearINatLayer();
-});
-chkINatHeat.addEventListener('change', ()=>{ if(!inatActive) return; ensureINatLayers(); renderINat(); });
-
-/* ===== NASA POWER daily: fetch & plot ===== */
-const chartDiv = document.getElementById('chart');
-async function fetchPOWERDaily(lat,lon,year){
-  const url = new URL('https://power.larc.nasa.gov/api/temporal/daily/point');
-  url.search = new URLSearchParams({
-    parameters:'T2M,T2M_MIN,T2M_MAX,PRECTOTCORR',
-    community:'AG',
-    longitude:String(lon),
-    latitude:String(lat),
-    start:`${year}0101`,
-    end:`${year}1231`,
-    format:'JSON'
-  }).toString();
-  const r = await fetch(url.toString()); if(!r.ok) throw new Error('POWER daily '+r.status);
-  const j = await r.json();
-  const p = j?.properties?.parameter||{};
-  const dates = Object.keys(p?.T2M||{}).sort();
-  return dates.map(d=>{
-    return {
-      date:d,
-      T2M: numOrNull(p.T2M[d]),
-      T2M_MIN: numOrNull(p.T2M_MIN?.[d]),
-      T2M_MAX: numOrNull(p.T2M_MAX?.[d]),
-      P: numOrNull(p.PRECTOTCORR?.[d])
-    };
-  });
-}
-function plotDaily(daily){
-  const x = daily.map(r=>`${r.date.slice(0,4)}-${r.date.slice(4,6)}-${r.date.slice(6,8)}`);
-  const t2m = daily.map(r=>r.T2M);
-  const pr  = daily.map(r=>r.P);
-  const traces = [
-    { x, y:t2m, type:'scatter', mode:'lines', name:'T2M (°C)', line:{width:1.5}, connectgaps:false },
-    { x, y:pr,  type:'bar', name:'Precip (mm)', yaxis:'y2', opacity:0.35 }
-  ];
-  const layout = {
-    paper_bgcolor:'#0b1220', plot_bgcolor:'#0b1220',
-    margin:{l:48,r:48,t:24,b:32},
-    xaxis:{title:'Date', color:'#cbd5e1'},
-    yaxis:{title:'T2M (°C)', color:'#cbd5e1', gridcolor:'#334155', range:[-50,50]},
-    yaxis2:{title:'Precip (mm)', color:'#cbd5e1', overlaying:'y', side:'right', showgrid:false}
-  };
-  Plotly.newPlot(chartDiv, traces, layout, {displayModeBar:false});
-}
-
-/* ===== Eight flowers: GDD forecasting (skip invalid/empty rows) ===== */
-function estimateDOYFromSeries_Tavg(tempDaily, base, thr){
-  let acc=0;
-  for(let i=0;i<tempDaily.length;i++){
-    const v=tempDaily[i]; if(v==null) continue;
-    acc += Math.max(0, v-base);
-    if(acc>=thr) return {doy:i+1, days:i+1, gdd:acc};
-  }
-  return {doy:null, days:null, gdd:acc};
-}
-async function calc8(lat,lon,year){
-  const daily = await fetchPOWERDaily(lat,lon,year);
-  const temps = daily.map(d=>d.T2M);
-  const tbody = document.querySelector('#tblFlowers tbody');
-  for(const tr of tbody.querySelectorAll('tr')){
-    const base = parseFloat(tr.children[1].querySelector('input').value);
-    const thr  = parseFloat(tr.children[2].querySelector('input').value);
-    const predCell = tr.querySelector('.pred');
-    const daysCell = tr.querySelector('.days');
-
-    if(!Number.isFinite(base) || !Number.isFinite(thr)){
-      predCell.textContent = '—';
-      daysCell.textContent = '—';
-      predCell.className = 'pred';
-      continue;
-    }
-
-    const {doy, days} = estimateDOYFromSeries_Tavg(temps, base, thr);
-    if(doy){
-      predCell.textContent = doyToDate(year, doy);
-      daysCell.textContent = days;
-      predCell.className = 'pred ok';
-    }else{
-      predCell.textContent = 'Not reached';
-      daysCell.textContent = '—';
-      predCell.className = 'pred bad';
-    }
-  }
-  plotDaily(daily);
-  return daily;
-}
-
-/* ===== Same-day weather ===== */
-const wxDate = document.getElementById('wxDate');
-const wxNow  = document.getElementById('wxNow');
-(function initWxDate(){
-  const d=new Date(); d.setUTCDate(d.getUTCDate()-1);
-  wxDate.value = d.toISOString().slice(0,10);
-})();
-async function queryWeatherOnce(lat,lon,isoDate){
-  const ymd = isoDate.replaceAll('-','');
-  const url = new URL('https://power.larc.nasa.gov/api/temporal/daily/point');
-  url.search = new URLSearchParams({
-    parameters:'T2M,PRECTOTCORR',
-    community:'AG',
-    longitude:String(lon), latitude:String(lat),
-    start: ymd, end: ymd, format:'JSON'
-  }).toString();
-  try{
-    const r = await fetch(url); if(!r.ok) throw new Error('POWER '+r.status);
-    const j = await r.json(); const p = j?.properties?.parameter||{};
-    const t = numOrNull(Object.values(p.T2M||{})[0]);
-    const rr = numOrNull(Object.values(p.PRECTOTCORR||{})[0]);
-    wxNow.textContent = `T2M: ${t==null?'—':t.toFixed(1)} °C, Precip: ${rr==null?'—':rr.toFixed(1)} mm`;
-  }catch(e){
-    wxNow.textContent = 'T2M: — °C, Precip: — mm (query failed)';
-    console.error(e);
-  }
-}
-
-/* ===== Vegetation Indices (ORNL RST API) ===== */
-const RST = 'https://modis.ornl.gov/rst/api/v1';
-const viProductSEL = document.getElementById('viProduct');
-const btnVI = document.getElementById('btnVI');
-const viMeta = document.getElementById('viMeta');
-const viQual = document.getElementById('viQual');
-const viVigor= document.getElementById('viVigor');
-const viNDVI= document.getElementById('viNDVI');
-const viEVI = document.getElementById('viEVI');
-const viRED = document.getElementById('viRED');
-const viNIR = document.getElementById('viNIR');
-const viBLUE= document.getElementById('viBLUE');
-const viMIR = document.getElementById('viMIR');
-const viSZA = document.getElementById('viSZA');
-const viVZA = document.getElementById('viVZA');
-const viRAA = document.getElementById('viRAA');
-const viDOY = document.getElementById('viDOY');
-
-async function fetchDates(product, lat, lon){
-  const url = `${RST}/${product}/dates?latitude=${lat}&longitude=${lon}`;
-  const r = await fetch(url); if(!r.ok) throw new Error('dates HTTP '+r.status);
-  return r.json();
-}
-async function fetchSubset(product, lat, lon, aStart, aEnd){
-  const url = `${RST}/${product}/subset?latitude=${lat}&longitude=${lon}&startDate=${aStart}&endDate=${aEnd}&kmAboveBelow=0&kmLeftRight=0`;
-  const r = await fetch(url); if(!r.ok) throw new Error('subset HTTP '+r.status);
-  return r.json();
-}
-function scaleValue(bandName, raw){
-  if(raw==null) return null;
-  const n = Number(raw);
-  if(n <= -9000) return null; // fill / invalid
-  const b = (bandName||'').toLowerCase();
-  if(b.includes('reflectance')) return n * 0.0001;
-  if(b.includes('ndvi') || b.includes('evi')) return n * 0.0001;
-  if(b.includes('zenith') || b.includes('azimuth')) return n * 0.01;
-  return n;
-}
-function fmt(v, digits=4){ return (v==null || isNaN(v)) ? '—' : (+v).toFixed(digits); }
-function parseSubsetObj(json){
-  const out = {};
-  const arr = json?.subset || [];
-  for(const item of arr){
-    const key = (item.band || '').toLowerCase();
-    const val = Array.isArray(item.data) ? item.data[0] : item.data;
-    out[key] = { date: item.calendar_date || item.modis_date, raw: val, scaled: scaleValue(key, val) };
-  }
-  return { grid: out, tile: arr[0]?.tile || '—', modis_date: arr[0]?.modis_date || null, calendar_date: arr[0]?.calendar_date || null };
-}
-function pixelReliabilityBadge(code){
-  const m = {0:['Good','b-good'],1:['Marginal','b-marg'],2:['Snow/Ice','b-snow'],3:['Cloud','b-cloud']};
-  const k = m[Number(code)] || ['Unknown',''];
-  return `<span class="badge ${k[1]}">${k[0]} (${code})</span>`;
-}
-function vigorClass(ndvi){
-  if(ndvi==null || isNaN(ndvi)) return {label:'Unknown', cls:'vig-verylow'};
-  if(ndvi < 0.2) return {label:'Very Low (bare/urban)', cls:'vig-verylow'};
-  if(ndvi < 0.3) return {label:'Low', cls:'vig-low'};
-  if(ndvi < 0.5) return {label:'Medium', cls:'vig-medium'};
-  if(ndvi < 0.7) return {label:'High', cls:'vig-high'};
-  return {label:'Very High', cls:'vig-veryhigh'};
-}
-
-/* Ensure latest VI for current point (used by button & AI analysis) */
-async function ensureVI(lat, lon, product){
-  try{
-    const dates = await fetchDates(product, lat, lon);
-    const arr = dates?.dates || [];
-    if(!arr.length) throw new Error('No composite dates here');
-    const lastA = arr[arr.length-1]?.modis_date || arr[arr.length-1];
-    const j = await fetchSubset(product, lat, lon, lastA, lastA);
-    if(!(j?.subset?.length)) throw new Error('Empty subset');
-    const P = parseSubsetObj(j);
-    const G = P.grid;
-    const pick = kw => {
-      const k = Object.keys(G).find(x => x.includes(kw));
-      return k ? G[k] : {scaled:null, raw:null};
-    };
-    const ndvi = pick('ndvi').scaled;
-    const evi  = pick('evi').scaled;
-    const red  = pick('red_reflectance').scaled;
-    const nir  = pick('nir_reflectance').scaled;
-    const blue = pick('blue_reflectance').scaled;
-    const mir  = pick('mir_reflectance').scaled;
-    const sza  = pick('sun_zenith').scaled;
-    const vza  = pick('view_zenith').scaled;
-    const raa  = pick('relative_azimuth').scaled;
-    const rel  = (pick('pixel_reliability').raw);
-    const viq  = (pick('vi_quality').raw);
-    const doy  = (pick('composite_day_of_the_year').raw);
-
-    // Update UI
-    viMeta.textContent = `Date: ${P.calendar_date || '—'} (${P.modis_date || '—'}), Tile: ${P.tile}`;
-    viQual.innerHTML   = (rel!=null) ? pixelReliabilityBadge(rel) + (viq!=null? ` · VI_Quality=${viq}`:'') : (viq!=null? `VI_Quality=${viq}`:'—');
-    const vg = vigorClass(ndvi);
-    viVigor.innerHTML  = `<span class="${vg.cls}">${vg.label}</span> (NDVI=${fmt(ndvi,3)})`;
-
-    viNDVI.textContent = fmt(ndvi,4);
-    viEVI.textContent  = fmt(evi,4);
-    viRED.textContent  = fmt(red,4);
-    viNIR.textContent  = fmt(nir,4);
-    viBLUE.textContent = fmt(blue,4);
-    viMIR.textContent  = fmt(mir,4);
-    viSZA.textContent  = fmt(sza,2);
-    viVZA.textContent  = fmt(vza,2);
-    viRAA.textContent  = fmt(raa,2);
-    viDOY.textContent  = (doy==null?'—':String(doy));
-
-    // Save for GPT
-    window._lastVI = {
-      product, lat, lon,
-      date: P.calendar_date || null, a_date: P.modis_date || null, tile: P.tile,
-      ndvi, evi, red, nir, blue, mir, sza, vza, raa, rel, viq, doy,
-      vigor: vg.label
-    };
-    return window._lastVI;
-  }catch(e){
-    viMeta.textContent = 'Date: — (—), Tile: —';
-    viQual.textContent = 'Quality: —';
-    viVigor.textContent= 'Vigor: —';
-    viNDVI.textContent = viEVI.textContent = viRED.textContent = viNIR.textContent = '—';
-    viBLUE.textContent = viMIR.textContent = viSZA.textContent = viVZA.textContent = viRAA.textContent = viDOY.textContent = '—';
-    console.error(e);
-    return null;
-  }
-}
-btnVI.addEventListener('click', ()=>{
-  const ll = markerTop.getLatLng();
-  ensureVI(ll.lat, ll.lng, viProductSEL.value);
-});
-
-/* ===== Current point & refresh (also resolve address for GPT) ===== */
-const curLatLon = document.getElementById('curLatLon');
-function setCurrentPoint(lat,lon){
-  curLatLon.textContent = `lat=${lat.toFixed(4)}, lon=${lon.toFixed(4)}`;
-  fetchPOWERDaily(lat,lon,parseInt(inpYear.value,10)).then(plotDaily).catch(console.error);
-  if(wxDate.value) queryWeatherOnce(lat,lon,wxDate.value);
-  reverseGeocode(lat, lon, 'en').then(addr=>{ window._lastAddress = addr; }).catch(()=>{ window._lastAddress = null; });
-}
-setCurrentPoint(INIT.lat, INIT.lon);
-
-document.getElementById('btnCalc8').addEventListener('click', async ()=>{
-  const ll = markerTop.getLatLng();
-  try{
-    const daily = await calc8(ll.lat, ll.lng, parseInt(inpYear.value,10));
-    window._lastDaily = {lat: ll.lat, lon: ll.lng, year: parseInt(inpYear.value,10), daily};
-    if(wxDate.value) queryWeatherOnce(ll.lat, ll.lng, wxDate.value);
-  }catch(err){ console.error(err); alert('Computation failed. Please try again later.'); }
-});
-
-document.getElementById('btnWx').addEventListener('click', ()=>{
-  const ll = markerTop.getLatLng();
-  if(wxDate.value) queryWeatherOnce(ll.lat, ll.lng, wxDate.value);
-});
-function removeExclamationMarks(str) {
-    return str.replace(/！/g, '');
-}
-
-/* ===== ChatGPT (Markdown) big block (fixed key/model) ===== */
-const OPENAI_BASE  = 'https://api.openai.com/v1';
-const OPENAI_MODEL = 'gpt-4o-mini';
-const OPENAI_KEY   = removeExclamationMarks('s！k-p！roj-d-PKY！kxmzmyZ！AnHdbWH4zbJ5mnxdvi7kgVU！vMpmXSMIuBdspcdSFIiyCbocTdPVqijv！9FNjcbBT3BlbkFJU-sRcJsKqcRH！0c1v_1FNm2lBHhqTKf0aQTcf！IjjktRWAfeDWJxUz！vrUDO6YlxZ7！ESP6BY-V6UA');
-
-const aiQ     = document.getElementById('aiQuestion');
-const aiOutEl = document.getElementById('reportHTML');
-let chatHistory = [];
-
-function buildAnalysisPrompt(){
-  const ll = markerTop.getLatLng();
-  const y = parseInt(inpYear.value,10);
-  const addr = (window._lastAddress || '(address unavailable)');
-
-  // Collect rows but skip invalid/empty (e.g., Custom if blank)
-  const rowsAll = Array.from(document.querySelectorAll('#tblFlowers tbody tr'));
-  const rows = rowsAll.map(tr=>{
-    const name = tr.dataset.name;
-    const baseStr = tr.children[1].querySelector('input').value;
-    const thrStr  = tr.children[2].querySelector('input').value;
-    const base = parseFloat(baseStr);
-    const thr  = parseFloat(thrStr);
-    if(!Number.isFinite(base) || !Number.isFinite(thr)) return null;
-    const pred = tr.querySelector('.pred').textContent;
-    return {name, base, thr, pred};
-  }).filter(Boolean);
-
-  const daily = (window._lastDaily?.daily)||null;
-  let last30 = null;
-  if(daily){
-    const tail = daily.slice(-30);
-    const avgT = tail.map(d=>d.T2M).filter(v=>v!=null);
-    const sumP = tail.map(d=>d.P).filter(v=>v!=null).reduce((a,b)=>a+b,0);
-    const meanT = avgT.length? (avgT.reduce((a,b)=>a+b,0)/avgT.length) : null;
-    last30 = {meanT, sumP};
-  }
-
-  // Vegetation Indices summary (if available)
-  const VI = window._lastVI || null;
-  const viText = VI ? `VI (${VI.product}) ${VI.date||VI.a_date||''} — NDVI=${(VI.ndvi??'—')}, EVI=${(VI.evi??'—')}, vigor=${VI.vigor}; red=${VI.red??'—'}, nir=${VI.nir??'—'}, blue=${VI.blue??'—'}, mir=${VI.mir??'—'}; quality pixel_reliability=${VI.rel??'—'}, VI_Quality=${VI.viq??'—'}` : '(VI not queried yet)';
-
-  return `Location: (${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}), Year: ${y}
-Address: ${addr}
-
-Vegetation indices (latest from ORNL RST):
-${viText}
-
-Flowers (base/GDD and predicted):
-${rows.length ? rows.map(r=>`- ${r.name}: Base=${r.base}°C, GDD=${r.thr}, Predicted=${r.pred}`).join('\n') : '(no valid flower parameters provided)'}
-
-Last-30-day weather summary (POWER):
-${last30 ? `Mean T ≈ ${last30.meanT==null?'—':last30.meanT.toFixed(1)}°C; Total precip ≈ ${last30.sumP.toFixed(1)} mm` : '(not available)'}
-
-Please provide a detailed interpretation **in Markdown** as an agronomy and phenology expert. Using the local data above (vegetation indices, recent temperature/precipitation, and the flower GDD table), analyze which plants or flowers are suitable to grow here, explain your reasoning, and mention any caveats.`;
-}
-function renderMarkdown(md){
-  const safe = DOMPurify.sanitize(marked.parse(md || ''));
-  aiOutEl.innerHTML = safe;
-}
-async function callChat(messages){
-  try{
-    const resp = await fetch(`${OPENAI_BASE}/chat/completions`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+OPENAI_KEY},
-      body: JSON.stringify({ model: OPENAI_MODEL, messages, temperature:0.7 })
-    });
-    if(!resp.ok){
-      const t = await resp.text();
-      renderMarkdown(`**Request failed:** HTTP ${resp.status}\n\n\`\`\`\n${t}\n\`\`\``);
-      return null;
-    }
-    const data = await resp.json();
-    return data?.choices?.[0]?.message?.content || '';
-  }catch(err){
-    renderMarkdown(`**Network/CORS error:** ${String(err)}`);
-    return null;
-  }
-}
-document.getElementById('btnAIAnalyze').addEventListener('click', async ()=>{
-  const ll = markerTop.getLatLng();
-
-  // Ensure VI available for current point & selected product
-  if(!window._lastVI || Math.hypot(window._lastVI.lat-ll.lat, window._lastVI.lon-ll.lng)>1e-6 || window._lastVI.product!==viProductSEL.value){
-    await ensureVI(ll.lat, ll.lng, viProductSEL.value);
-  }
-  // Ensure last-30-day POWER series available (for summary)
-  const yr = parseInt(inpYear.value,10);
-  if(!window._lastDaily || window._lastDaily.lat!==ll.lat || window._lastDaily.lon!==ll.lng || window._lastDaily.year!==yr){
-    try{
-      const daily = await fetchPOWERDaily(ll.lat, ll.lng, yr);
-      window._lastDaily = {lat: ll.lat, lon: ll.lng, year: yr, daily};
-    }catch(_){ /* proceed even if missing */ }
-  }
-
-  const sys = {role:'system', content:'You are an agronomy and phenology expert. Please reply in Markdown. Using the local data provided, give a detailed interpretation and analyze which plants or flowers are suitable to grow here.'};
-  const user = {role:'user', content: buildAnalysisPrompt()};
-  chatHistory = [sys, user];
-  renderMarkdown('_Analyzing…_');
-  const text = await callChat(chatHistory);
-  if(text!=null){
-    renderMarkdown(text);
-    chatHistory.push({role:'assistant', content:text});
-  }
-});
-document.getElementById('btnAIAsk').addEventListener('click', async ()=>{
-  const q = aiQ.value.trim() || 'Please refine the planting windows and specific varieties based on the above analysis.';
-  if(chatHistory.length===0){
-    // Ensure a baseline context if user asks before Analyze
-    const ll = markerTop.getLatLng();
-    if(!window._lastVI || Math.hypot(window._lastVI.lat-ll.lat, window._lastVI.lon-ll.lng)>1e-6 || window._lastVI.product!==viProductSEL.value){
-      await ensureVI(ll.lat, ll.lng, viProductSEL.value);
-    }
-    const sys = {role:'system', content:'You are an agronomy and phenology expert. Please reply in Markdown. Using the local data provided, give a detailed interpretation and analyze which plants or flowers are suitable to grow here.'};
-    const user0= {role:'user', content: buildAnalysisPrompt()};
-    chatHistory = [sys, user0];
-  }
-  chatHistory.push({role:'user', content: q});
-  renderMarkdown('_Thinking…_');
-  const text = await callChat(chatHistory);
-  if(text!=null){
-    renderMarkdown((aiOutEl.textContent? aiOutEl.innerHTML+'\n\n---\n' : '') + text);
-    chatHistory.push({role:'assistant', content:text});
-  }
-});
-</script>
 </body>
 </html>
