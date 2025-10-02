@@ -1,0 +1,45 @@
+/* opg-gibs.css — minimal styles for OPG & GIBS overlay controls */
+/* Uses variables from style.css : root color tokens, borders, etc. */
+
+.group-opg,
+.group-gibs {
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(148, 163, 184, 0.06); /* subtle slate tint */
+}
+
+/* 2-column grid helper for compact controls */
+.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+@media (max-width: 900px) {
+  .two { grid-template-columns: 1fr; }
+}
+
+/* Inline inputs/selects fill the grid cell */
+.inline {
+  width: 100%;
+}
+
+/* Small helper note */
+.hint {
+  align-self: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* Buttons spacing inside overlay groups */
+.group-opg .btn,
+.group-gibs .btn {
+  width: 100%;
+}
+.group-opg .two .btn,
+.group-gibs .two .btn {
+  width: 100%;
+}
+
+/* Slight separation between OPG and GIBS groups */
+.group-opg + .group-gibs { margin-top: 1rem; }
