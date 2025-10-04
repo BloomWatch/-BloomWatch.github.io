@@ -1,4 +1,4 @@
-// BloomWatch - Main application script (EN)
+// FloraCast - Main application script (EN)
 // All UI strings, comments, and labels are in English.
 // Visual style, colors, and other functionalities not mentioned remain unchanged.
 
