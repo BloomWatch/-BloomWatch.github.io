@@ -312,3 +312,13 @@ main { flex: 1; position: relative; overflow: hidden; }
   width: 90px;
 }
 
+/* Real logo image */
+.logo-img {
+  height: 60px;     
+  width: auto;
+  display: block;
+}
+@media (max-width: 480px) {
+  .logo-img { height: 32px; }
+}
+
