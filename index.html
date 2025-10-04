@@ -12,11 +12,8 @@
 
   <!-- Main stylesheet -->
   <link rel="stylesheet" href="style.css"/>
-  <!-- New: styles for OpenPortGuide & GIBS controls -->
+  <!-- (Optional) OpenPortGuide & GIBS UI tweaks -->
   <link rel="stylesheet" href="opg-gibs.css"/>
-
-  <!-- Plotly for charts -->
-  <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
 </head>
 <body>
 <div id="app">
@@ -35,7 +32,7 @@
 
   <!-- Main map area -->
   <main>
-    <!-- Split container for single/dual map -->
+    <!-- Single / Dual map container (B is hidden until compare is enabled) -->
     <div id="map-wrap" class="map-wrap">
       <div id="map" class="map-pane"></div>
       <div id="map-b" class="map-pane hidden"></div>
@@ -80,7 +77,7 @@
         </div>
       </div>
 
-      <!-- Map A controls (primary) -->
+      <!-- Map A controls -->
       <div class="control-group">
         <label>Map A · Base Layer</label>
         <select id="main-layer">
@@ -108,7 +105,7 @@
         <input id="layer-opacity" type="range" min="0" max="1" step="0.05" value="0.8">
       </div>
 
-      <!-- Map A · OpenPortGuide (overlay) -->
+      <!-- Map A · OpenPortGuide overlay -->
       <div class="control-group group-opg">
         <label>Map A · OpenPortGuide (overlay)</label>
         <div class="two">
@@ -139,7 +136,7 @@
         </div>
       </div>
 
-      <!-- Map A · NASA GIBS — WMS (overlay) -->
+      <!-- Map A · NASA GIBS — WMS overlay -->
       <div class="control-group group-gibs">
         <label>Map A · NASA GIBS — WMS (overlay)</label>
         <div class="two">
@@ -174,7 +171,7 @@
         <div class="date-label">If TIME is empty, the app will use the latest/last time from capabilities with fallback.</div>
       </div>
 
-      <!-- Map B controls (visible only when compare is enabled) -->
+      <!-- Map B controls (revealed only when compare is enabled) -->
       <div id="layer-controls-b" class="compare-b hidden">
         <div class="control-group">
           <label>Map B · Base Layer</label>
@@ -203,7 +200,7 @@
           <input id="layer-opacity-b" type="range" min="0" max="1" step="0.05" value="0.8">
         </div>
 
-        <!-- Map B · OpenPortGuide (overlay) -->
+        <!-- Map B · OpenPortGuide -->
         <div class="control-group group-opg">
           <label>Map B · OpenPortGuide (overlay)</label>
           <div class="two">
@@ -234,7 +231,7 @@
           </div>
         </div>
 
-        <!-- Map B · NASA GIBS — WMS (overlay) -->
+        <!-- Map B · NASA GIBS — WMS -->
         <div class="control-group group-gibs">
           <label>Map B · NASA GIBS — WMS (overlay)</label>
           <div class="two">
@@ -315,39 +312,114 @@
     </div>
   </div>
 
-  <!-- Vegetation panel -->
+  <!-- Vegetation panel (ENHANCED with wildflower-test features) -->
   <div id="vegetation-panel" class="panel">
     <div class="panel-header">
-      <h3>Vegetation Index (NDVI/EVI)</h3>
+      <h3>Vegetation Index (NDVI/EVI) · Nearby Species · Invasives</h3>
       <button class="panel-close" aria-label="Close panel">×</button>
     </div>
+
     <div class="panel-content">
+      <!-- A) VI at selected point -->
       <div class="control-group">
         <label>Product</label>
-        <select id="vi-product">
-          <option value="MOD13Q1">MOD13Q1 · MODIS Terra · 16-day (250m)</option>
-          <option value="VNP13A1">VNP13A1 · VIIRS SNPP · 16-day (500m)</option>
-        </select>
-        <button id="vi-query" class="btn btn-primary">Query Latest</button>
+        <div class="button-group">
+          <select id="vi-product">
+            <option value="MOD13Q1">MOD13Q1 · MODIS Terra · 16-day (250m)</option>
+            <option value="VNP13A1">VNP13A1 · VIIRS SNPP · 16-day (500m)</option>
+          </select>
+          <button id="vi-query" class="btn btn-primary">Query Latest Composite</button>
+        </div>
+        <div class="hint">Queries NDVI/EVI at the selected point (latest available date).</div>
+        <table class="vi-table">
+          <thead><tr><th>Variable</th><th>Value</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td>NDVI</td><td id="vi-ndvi">—</td><td>[−1, 1]</td></tr>
+            <tr><td>EVI</td><td id="vi-evi">—</td><td>[−1, ~1]</td></tr>
+            <tr><td>Date</td><td id="vi-date">—</td><td>Composite date</td></tr>
+          </tbody>
+        </table>
       </div>
-      <div class="vi-info">
-        <div id="vi-meta" class="info-line">Date: —, Tile: —</div>
-        <div id="vi-quality" class="info-line">Quality: —</div>
-        <div id="vi-vigor" class="info-line">Vigor: —</div>
+
+      <hr class="hr"/>
+
+      <!-- B) Nearby species list, monthly counts & show selected species on map -->
+      <div class="control-group">
+        <label>Nearby species (iNaturalist)</label>
+        <div class="button-group">
+          <input id="vi-year" type="number" min="2008" max="2100" value="2024" />
+          <input id="vi-radius" type="number" min="1" max="200" value="25" />
+          <button id="vi-load-species" class="btn btn-primary">Load species (year & radius)</button>
+        </div>
+        <div class="button-group">
+          <input id="vi-species-filter" type="search" placeholder="Filter by common/scientific name…"/>
+        </div>
+        <select id="vi-species-list" size="6" class="list"></select>
+
+        <div class="button-group">
+          <button id="vi-plot-monthly" class="btn btn-primary">Plot monthly counts</button>
+          <button id="vi-show-species" class="btn">Show selected species on map</button>
+          <button id="vi-clear-species" class="btn">Clear species markers</button>
+        </div>
+
+        <div id="vi-flower-chart" class="chart"></div>
+        <div class="hint small">Counts are iNaturalist monthly observations near the selected point for the chosen year.</div>
       </div>
-      <table class="vi-table">
-        <thead>
-        <tr><th>Variable</th><th>Value</th><th>Note</th></tr>
-        </thead>
-        <tbody>
-        <tr><td>NDVI</td><td id="vi-ndvi">—</td><td>[-1, 1]</td></tr>
-        <tr><td>EVI</td><td id="vi-evi">—</td><td>[-1, ~1]</td></tr>
-        <tr><td>Red</td><td id="vi-red">—</td><td>Reflectance</td></tr>
-        <tr><td>NIR</td><td id="vi-nir">—</td><td>Reflectance</td></tr>
-        <tr><td>Blue</td><td id="vi-blue">—</td><td>Reflectance</td></tr>
-        <tr><td>MIR</td><td id="vi-mir">—</td><td>Reflectance</td></tr>
-        </tbody>
-      </table>
+
+      <hr class="hr"/>
+
+      <!-- C) Rainfall / Aridity / Superbloom (rainfall-only) -->
+      <div class="control-group">
+        <label>Rainfall · Aridity · “Superbloom”</label>
+        <div class="button-group">
+          <button id="vi-load-rain" class="btn btn-primary">Load last 365 days (POWER)</button>
+        </div>
+        <div class="bar"><i id="vi-arid-bar" style="width:0%"></i></div>
+        <div id="vi-arid-label" class="small">Aridity index: —</div>
+        <div id="vi-rain-chart" class="chart"></div>
+        <div id="vi-superbloom" class="small">Superbloom prediction: — (rainfall-based)</div>
+      </div>
+
+      <hr class="hr"/>
+
+      <!-- D) Pollinator dynamics -->
+      <div class="control-group">
+        <label>Pollinator dynamics (iNat taxa IDs, comma separated)</label>
+        <div class="button-group">
+          <input id="vi-pollinator-taxa" type="text" value="47157,630955" />
+          <button id="vi-plot-pollinators" class="btn btn-primary">Plot pollinator counts</button>
+        </div>
+        <div class="hint small">Default taxa: Lepidoptera (47157), Apoidea (630955). Edit if needed.</div>
+        <div id="vi-poll-chart" class="chart"></div>
+      </div>
+
+      <hr class="hr"/>
+
+      <!-- E) Invasives (Auto analysis over last 5 years) -->
+      <div class="control-group">
+        <label>Invasives (Auto, last 5 years near point)</label>
+        <div class="button-group">
+          <input id="vi-inv-topN" type="number" min="1" max="50" value="10" />
+          <button id="vi-inv-analyze" class="btn btn-primary">Analyze top-N species</button>
+          <button id="vi-inv-show" class="btn">Show on map</button>
+          <button id="vi-inv-clear" class="btn">Clear</button>
+        </div>
+        <div class="hint small">Ranks species by 5-year observation counts near the point, flags potential invasives (heuristic or curated list if present).</div>
+        <div class="flowers-table-container">
+          <table class="flowers-table" id="vi-inv-table">
+            <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Common name</th>
+              <th>Scientific</th>
+              <th>5y Count</th>
+              <th>Flag</th>
+            </tr>
+            </thead>
+            <tbody><!-- filled by JS --></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -486,59 +558,58 @@
     </div>
   </div>
 
-<!-- Forecast panel -->
-<div id="forecast-panel" class="panel">
-  <div class="panel-header">
-    <h3>NDVI/EVI Forecast (30 days)</h3>
-    <button class="panel-close" aria-label="Close panel">×</button>
-  </div>
-  <div class="panel-content">
-    <div class="control-group">
-      <label>Product</label>
-      <select id="fc-product">
-        <option value="MOD13Q1">MOD13Q1 · MODIS Terra · 16-day (250m)</option>
-        <option value="VNP13A1">VNP13A1 · VIIRS SNPP · 16-day (500m)</option>
-      </select>
+  <!-- Forecast panel -->
+  <div id="forecast-panel" class="panel">
+    <div class="panel-header">
+      <h3>NDVI/EVI Forecast (30 days)</h3>
+      <button class="panel-close" aria-label="Close panel">×</button>
     </div>
-
-    <div class="control-group">
-      <label>Target Index</label>
-      <select id="fc-target">
-        <option value="ndvi">NDVI</option>
-        <option value="evi">EVI</option>
-      </select>
-    </div>
-
-    <div class="control-group">
-      <label>History length (years)</label>
-      <input id="fc-years" type="number" value="3" min="1" max="8"/>
-      <div class="date-label">We’ll pull ~16-day composites over N years and align with daily POWER weather.</div>
-    </div>
-
-    <div class="control-group">
-      <label>Training options</label>
-      <div class="date-range">
-        <input id="fc-epochs" type="number" value="120" min="20" max="1000"/>
-        <span>epochs</span>
-        <input id="fc-lr" type="number" value="0.01" step="0.005" min="0.001" max="0.1"/>
-        <span>learning rate</span>
+    <div class="panel-content">
+      <div class="control-group">
+        <label>Product</label>
+        <select id="fc-product">
+          <option value="MOD13Q1">MOD13Q1 · MODIS Terra · 16-day (250m)</option>
+          <option value="VNP13A1">VNP13A1 · VIIRS SNPP · 16-day (500m)</option>
+        </select>
       </div>
-      <div class="date-label">If TensorFlow.js is unavailable, a linear baseline fallback will be used.</div>
-    </div>
 
-    <div class="control-group">
-      <div class="button-group">
-        <button id="fc-train" class="btn btn-primary">Train + Forecast</button>
-        <button id="fc-clear" class="btn">Clear</button>
+      <div class="control-group">
+        <label>Target Index</label>
+        <select id="fc-target">
+          <option value="ndvi">NDVI</option>
+          <option value="evi">EVI</option>
+        </select>
       </div>
+
+      <div class="control-group">
+        <label>History length (years)</label>
+        <input id="fc-years" type="number" value="3" min="1" max="8"/>
+        <div class="date-label">We’ll pull ~16-day composites over N years and align with daily POWER weather.</div>
+      </div>
+
+      <div class="control-group">
+        <label>Training options</label>
+        <div class="date-range">
+          <input id="fc-epochs" type="number" value="120" min="20" max="1000"/>
+          <span>epochs</span>
+          <input id="fc-lr" type="number" value="0.01" step="0.005" min="0.001" max="0.1"/>
+          <span>learning rate</span>
+        </div>
+        <div class="date-label">If TensorFlow.js is unavailable, a linear baseline fallback will be used.</div>
+      </div>
+
+      <div class="control-group">
+        <div class="button-group">
+          <button id="fc-train" class="btn btn-primary">Train + Forecast</button>
+          <button id="fc-clear" class="btn">Clear</button>
+        </div>
+      </div>
+
+      <div id="fc-stats" class="stats">—</div>
+      <div id="fc-chart" style="height: 320px; margin-top: 1rem;"></div>
+      <div class="weather-note">Inputs: historical NDVI/EVI (MODIS/VIIRS) + daily POWER T2M & Precip; engineered features include lag values & seasonal encodings.</div>
     </div>
-
-    <div id="fc-stats" class="stats">—</div>
-    <div id="fc-chart" style="height: 320px; margin-top: 1rem;"></div>
-    <div class="weather-note">Inputs: historical NDVI/EVI (MODIS/VIIRS) + daily POWER T2M & Precip; engineered features include lag values & seasonal encodings.</div>
   </div>
-</div>
-
 
   <!-- Overlay -->
   <div id="overlay" class="overlay"></div>
@@ -547,18 +618,16 @@
 <!-- JS libraries -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-<!-- Markdown parser for AI output -->
+<!-- Markdown (if AI uses markdown rendering) -->
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- Plotly (one copy only; used by charts in Vegetation/Forecast) -->
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
 
-<!-- App script -->
+<!-- App scripts (keep order: app.js first, then overlays/extensions) -->
 <script src="app.js" defer></script>
 <script src="opg-gibs-overlays.js" defer></script>
-
-<!-- ML script -->
+<!-- (Optional) Forecast ML helpers -->
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.18.0/dist/tf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
 <script src="./forecast.js"></script>
-
-
 </body>
 </html>
