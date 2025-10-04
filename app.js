@@ -2154,6 +2154,591 @@ window.ForecastManager = ForecastManager;
 
 
 
+/* =======================================================================
+ * Vegetation: Wildflower Stats (iNaturalist + NASA POWER)
+ * Drop-in addon — append this WHOLE block to the END of your app.js
+ * It binds to your existing HTML controls (all ids start with `vi-`).
+ * Requirements:
+ *   - MapManager.getCurrentLocation() -> { lat, lng }
+ *   - AppState.map is a Leaflet map instance
+ *   - Leaflet + (optional) leaflet.markercluster
+ *   - Plotly loaded before app.js
+ *   - Optional Icons.flower for markers (falls back to default marker)
+ * =======================================================================*/
+(() => {
+  const VIAddon = {
+    // Optional overlay: show some pollinator groups as reference lines
+    POLLINATOR_TAXA: [
+      { id: 630955, label: 'Apoidea (bees)' },
+      { id: 47157,  label: 'Lepidoptera' }
+    ],
+
+    _speciesCache: [],       // [{id, name, common, count}]
+    _speciesLayer: null,     // L.MarkerClusterGroup
+    _busy: false,
+    _invasiveList: [],       // [{id, name, common, total5y, flag, trend?}]
+    _lastParams: null,       // {lat,lng,year,radius}
+
+    /* ---------------------- lifecycle ---------------------- */
+    init() {
+      // Bind directly to EXISTING HTML (no UI injection)
+      window.addEventListener('DOMContentLoaded', () => {
+        this.bindEvents();
+      });
+    },
+
+    bindEvents() {
+      const $ = (id) => document.getElementById(id);
+
+      // Species list / monthly plot / map overlay
+      $('vi-load-species')?.addEventListener('click', () => this.loadSpeciesList());
+      $('vi-species-filter')?.addEventListener('input', (e) => this.renderSpeciesList(e.target.value || ''));
+      $('vi-plot-monthly')?.addEventListener('click', () => this.plotSelectedMonthly());
+      $('vi-show-species')?.addEventListener('click', () => this.showSelectedSpeciesOnMap());
+      $('vi-clear-species')?.addEventListener('click', () => this.clearSpeciesLayer());
+
+      // Invasives (auto, last 5y)
+      $('vi-inv-analyze')?.addEventListener('click', () => this.detectInvasives5y());
+      $('vi-inv-show')?.addEventListener('click', () => this.showTopInvasivesOnMap());
+      $('vi-inv-clear')?.addEventListener('click', () => this.clearSpeciesLayer());
+
+      // POWER: last 365 days (rain + aridity + heuristic superbloom)
+      $('vi-load-rain')?.addEventListener('click', () => this.loadRainAridity());
+
+      // Pollinator monthly counts (free input of taxa ids)
+      $('vi-plot-pollinators')?.addEventListener('click', () => this.plotPollinators());
+
+      console.log('[VIAddon] events bound to vi-* controls.');
+    },
+
+    /* ---------------------- helpers ---------------------- */
+    getParams() {
+      const loc = (typeof MapManager?.getCurrentLocation === 'function')
+        ? MapManager.getCurrentLocation()
+        : { lat: 38.9072, lng: -77.0369 }; // fallback Washington, DC
+
+      const year   = parseInt(document.getElementById('vi-year')?.value || '2024', 10);
+      const radius = Math.max(1, Math.min(200, parseInt(document.getElementById('vi-radius')?.value || '25', 10)));
+      return { lat: loc.lat, lng: loc.lng, year, radius };
+    },
+
+    /* ---------------------- species list ---------------------- */
+    async loadSpeciesList() {
+      if (this._busy) return;
+      this._busy = true;
+
+      const { lat, lng, year, radius } = this.getParams();
+      this._lastParams = { lat, lng, year, radius };
+
+      const listEl = document.getElementById('vi-species-list');
+      if (listEl) { listEl.innerHTML = ''; const opt = document.createElement('option'); opt.textContent = 'Loading…'; listEl.appendChild(opt); }
+
+      try {
+        // iNaturalist species_counts for Angiosperms (47125)
+        const per = 200;
+        const out = [];
+        for (let page=1; page<=5; page++){
+          const u = new URL('https://api.inaturalist.org/v1/observations/species_counts');
+          u.search = new URLSearchParams({
+            lat, lng, radius, year,
+            verifiable:'true', geo:'true',
+            taxon_id:'47125',
+            per_page:String(per), page:String(page)
+          }).toString();
+
+          const r = await fetch(u);
+          if (!r.ok) break;
+          const j = await r.json();
+          const arr = j?.results || [];
+          for (const s of arr){
+            const t = s.taxon || {};
+            if (!t.id) continue;
+            out.push({
+              id: t.id,
+              name: t.name,
+              common: t.preferred_common_name || t.english_common_name || '',
+              count: s.count || 0
+            });
+          }
+          if (arr.length < per) break;
+        }
+        out.sort((a,b)=>b.count-a.count);
+        this._speciesCache = out;
+        this.renderSpeciesList(document.getElementById('vi-species-filter')?.value || '');
+        console.log(`[VIAddon] species loaded: ${out.length} (Y=${year}, R=${radius}km)`);
+      } catch (e) {
+        console.error(e);
+        if (listEl) { listEl.innerHTML = ''; const opt = document.createElement('option'); opt.textContent = 'Failed. Try again.'; listEl.appendChild(opt); }
+      } finally {
+        this._busy = false;
+      }
+    },
+
+    renderSpeciesList(filterText) {
+      const sel = document.getElementById('vi-species-list');
+      if (!sel) return;
+      sel.innerHTML = '';
+
+      const q = (filterText || '').trim().toLowerCase();
+      const items = this._speciesCache
+        .filter(s => !q || (s.name?.toLowerCase().includes(q) || s.common?.toLowerCase().includes(q)))
+        .slice(0, 800);
+
+      for (const s of items) {
+        const opt = document.createElement('option');
+        opt.value = String(s.id);
+        opt.textContent = `${s.common ? (s.common + ' · ') : ''}${s.name} (${s.count})`;
+        sel.appendChild(opt);
+      }
+    },
+
+    /* ---------------------- monthly plot (legend at bottom) ---------------------- */
+    async plotSelectedMonthly() {
+      const sel = document.getElementById('vi-species-list');
+      if (!sel || !sel.value) return alert('Please choose a species first.');
+      if (!window.Plotly) return alert('Plotly not loaded.');
+
+      const taxonId = parseInt(sel.value, 10);
+      const label   = sel.options[sel.selectedIndex]?.textContent?.replace(/\s*\(\d+\)\s*$/, '') || `taxon ${taxonId}`;
+      const { lat, lng, year, radius } = this.getParams();
+
+      try {
+        const [monthCounts, precipMonthly] = await Promise.all([
+          this._inatMonthly(taxonId, lat, lng, radius, year),
+          this._powerMonthly(lat, lng, year)
+        ]);
+
+        const names  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const months = Array.from({length:12}, (_,i)=>i+1);
+        const yObs   = months.map(m => monthCounts[m] || 0);
+        const yP     = months.map(m => precipMonthly[m] || 0);
+
+        const traces = [
+          { x:names, y:yObs, type:'scatter', mode:'lines+markers', name:`${label} (observations)` },
+          { x:names, y:yP,   type:'bar',     name:'Precip (mm)', yaxis:'y2', opacity:0.5 }
+        ];
+
+        // Optional pollinator overlays
+        const pol = await Promise.all(this.POLLINATOR_TAXA.map(async p=>{
+          try{
+            const mc = await this._inatMonthly(p.id, lat, lng, radius, year);
+            return { x:names, y:months.map(m=>mc[m]||0), type:'scatter', mode:'lines', line:{width:1}, name:p.label };
+          }catch{return null;}
+        }));
+        traces.push(...pol.filter(Boolean));
+
+        const layout = {
+          margin:{l:48,r:48,t:24,b:56},
+          xaxis:{title:`Monthly in ${year}`},
+          yaxis:{title:'Observations'},
+          yaxis2:{title:'Precip (mm)', overlaying:'y', side:'right', showgrid:false},
+          legend: { orientation:'h', yanchor:'top', y:-0.25, xanchor:'center', x:0.5 } // legend at bottom
+        };
+        Plotly.newPlot('vi-flower-chart', traces, layout, { displayModeBar:false });
+
+        console.log('[VIAddon] monthly chart rendered (legend bottom).');
+      } catch (e) {
+        console.error(e);
+        alert('Failed to plot monthly chart.');
+      }
+    },
+
+    /* ---------------------- show selected species on map ---------------------- */
+    async showSelectedSpeciesOnMap() {
+      const sel = document.getElementById('vi-species-list');
+      if (!sel || !sel.value) return alert('Please choose a species first.');
+      const taxonId = parseInt(sel.value, 10);
+      const { lat, lng, year, radius } = this.getParams();
+
+      if (!AppState?.map) return alert('Map not ready.');
+      this.clearSpeciesLayer();
+      if (!this._speciesLayer) this._speciesLayer = L.markerClusterGroup();
+
+      let total = 0;
+      try {
+        for (let page=1; page<=5; page++){
+          const u = new URL('https://api.inaturalist.org/v1/observations');
+          u.search = new URLSearchParams({
+            lat, lng, radius, year,
+            taxon_id: String(taxonId),
+            verifiable:'true', geo:'true',
+            order:'desc', order_by:'observed_on',
+            per_page:'200', page:String(page)
+          }).toString();
+
+          const r = await fetch(u);
+          if (!r.ok) break;
+          const j = await r.json();
+          const arr = j?.results || [];
+          total += arr.length;
+
+          for (const o of arr) {
+            const y = o.geojson?.coordinates?.[1] ?? (o.location ? Number(o.location.split(',')[0]) : null);
+            const x = o.geojson?.coordinates?.[0] ?? (o.location ? Number(o.location.split(',')[1]) : null);
+            if (y==null || x==null) continue;
+
+            const icon = (window.Icons && Icons.flower) ? Icons.flower : undefined;
+            const marker = L.marker([y,x], icon?{icon}:{});
+            const when = (o.observed_on_details?.date || o.observed_on || '').slice(0,10);
+            const title = o.taxon?.preferred_common_name || o.taxon?.name || `taxon ${taxonId}`;
+            marker.bindPopup(
+              `<div style="min-width:220px">
+                 <b>${title}</b><br>${when||''}<br>
+                 <a target="_blank" rel="noopener" href="https://www.inaturalist.org/observations/${o.id}">Open on iNaturalist</a>
+               </div>`
+            );
+            this._speciesLayer.addLayer(marker);
+          }
+          if (arr.length < 200) break;
+        }
+
+        this._speciesLayer.addTo(AppState.map);
+        console.log(`[VIAddon] added ${total} markers.`);
+      } catch (e) {
+        console.error(e);
+        alert('Failed to load observation points.');
+      }
+    },
+
+    clearSpeciesLayer() {
+      if (this._speciesLayer) {
+        this._speciesLayer.clearLayers();
+        if (AppState?.map) AppState.map.removeLayer(this._speciesLayer);
+      }
+      this._speciesLayer = null;
+    },
+
+    /* ---------------------- invasives (auto, last 5y) ---------------------- */
+    async detectInvasives5y() {
+      const { lat, lng, radius } = this.getParams();
+      const endYear = new Date().getUTCFullYear();
+      const d1 = `${endYear-4}-01-01`;
+      const d2 = `${endYear}-12-31`;
+
+      const tbody = document.querySelector('#vi-inv-table tbody');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="5">Analyzing…</td></tr>`;
+
+      try {
+        // Step 1: trust iNat "introduced" label if available
+        let list = [];
+        const uIntro = new URL('https://api.inaturalist.org/v1/observations/species_counts');
+        uIntro.search = new URLSearchParams({
+          lat, lng, radius, d1, d2,
+          verifiable:'true', geo:'true',
+          establishment_means:'introduced',
+          per_page:'200'
+        }).toString();
+        let r = await fetch(uIntro);
+        if (r.ok) {
+          const j = await r.json();
+          list = (j?.results||[]).map(s=>({
+            id: s.taxon?.id,
+            name: s.taxon?.name,
+            common: s.taxon?.preferred_common_name || '',
+            total5y: s.count || 0,
+            flag: 'introduced'
+          })).filter(x=>x.id);
+        }
+
+        // Step 2: if few introduced hits, fallback to 5y sum + trend heuristic
+        if (!list.length) {
+          const yearMap = new Map(); // id -> {name,common, y:[5], sum}
+          for (let y=endYear-4; y<=endYear; y++) {
+            const u = new URL('https://api.inaturalist.org/v1/observations/species_counts');
+            u.search = new URLSearchParams({
+              lat, lng, radius, year:String(y),
+              verifiable:'true', geo:'true',
+              taxon_id:'47125', per_page:'200'
+            }).toString();
+            const rr = await fetch(u);
+            if (!rr.ok) continue;
+            const jj = await rr.json();
+            for (const s of (jj?.results||[])) {
+              const id = s?.taxon?.id; if (!id) continue;
+              const rec = yearMap.get(id) || { name: s.taxon?.name, common: s.taxon?.preferred_common_name||'', y:[0,0,0,0,0], sum:0 };
+              rec.y[y-(endYear-4)] += (s.count||0);
+              rec.sum += (s.count||0);
+              yearMap.set(id, rec);
+            }
+          }
+          list = Array.from(yearMap.entries()).map(([id, rec])=>{
+            const first = rec.y[0] || 0, last = rec.y[4] || 0;
+            const ratio = first===0 ? (last>0?Infinity:1) : (last/first);
+            const trend = ratio>=1.5 ? '▲' : (ratio<=0.67 ? '▼' : '—');
+            return { id, name:rec.name, common:rec.common, total5y:rec.sum, flag:'candidate', trend };
+          }).sort((a,b)=>b.total5y-a.total5y).slice(0, 50);
+        }
+
+        list.sort((a,b)=>b.total5y-a.total5y);
+        this._invasiveList = list;
+
+        // Render table
+        if (tbody) {
+          tbody.innerHTML = '';
+          let rank = 1;
+          for (const sp of list) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${rank++}</td>
+              <td>${sp.common || '—'}</td>
+              <td>${sp.name || '—'}</td>
+              <td>${sp.total5y}</td>
+              <td>${sp.flag}${sp.trend?` ${sp.trend}`:''}</td>
+            `;
+            tbody.appendChild(tr);
+          }
+          if (!list.length) {
+            tbody.innerHTML = `<tr><td colspan="5">No invasive candidates found.</td></tr>`;
+          }
+        }
+        console.log(`[VIAddon] invasive analyzed: ${list.length}`);
+      } catch (e) {
+        console.error(e);
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5">Analyze failed.</td></tr>`;
+      }
+    },
+
+    async showTopInvasivesOnMap() {
+      if (!this._invasiveList?.length) return alert('Run "Analyze top-N species" first.');
+      if (!AppState?.map) return alert('Map not ready.');
+
+      const topN = Math.max(1, Math.min(50, parseInt(document.getElementById('vi-inv-topN')?.value || '10', 10)));
+      const { lat, lng, year, radius } = this.getParams();
+
+      this.clearSpeciesLayer();
+      this._speciesLayer = L.markerClusterGroup();
+
+      let total = 0;
+      try {
+        for (const sp of this._invasiveList.slice(0, topN)) {
+          // Limit pages per species to avoid overload
+          for (let page=1; page<=2; page++) {
+            const u = new URL('https://api.inaturalist.org/v1/observations');
+            u.search = new URLSearchParams({
+              lat, lng, radius, year,
+              taxon_id:String(sp.id),
+              verifiable:'true', geo:'true',
+              order:'desc', order_by:'observed_on',
+              per_page:'200', page:String(page)
+            }).toString();
+            const r = await fetch(u);
+            if (!r.ok) break;
+            const j = await r.json();
+            const arr = j?.results || [];
+            total += arr.length;
+
+            for (const o of arr) {
+              const y = o.geojson?.coordinates?.[1] ?? (o.location ? Number(o.location.split(',')[0]) : null);
+              const x = o.geojson?.coordinates?.[0] ?? (o.location ? Number(o.location.split(',')[1]) : null);
+              if (y==null || x==null) continue;
+
+              const icon = (window.Icons && Icons.flower) ? Icons.flower : undefined;
+              const marker = L.marker([y,x], icon?{icon}:{});
+              const when = (o.observed_on_details?.date || o.observed_on || '').slice(0,10);
+              const title = sp.common || sp.name || `taxon ${sp.id}`;
+              marker.bindPopup(
+                `<div style="min-width:220px">
+                   <b>${title}</b><br>${when||''}<br>
+                   <a target="_blank" rel="noopener" href="https://www.inaturalist.org/observations/${o.id}">Open on iNaturalist</a>
+                 </div>`
+              );
+              this._speciesLayer.addLayer(marker);
+            }
+            if (arr.length < 200) break;
+          }
+        }
+        this._speciesLayer.addTo(AppState.map);
+        console.log(`[VIAddon] invasive markers added: ${total} points.`);
+      } catch (e) {
+        console.error(e);
+        alert('Failed to add invasive markers.');
+      }
+    },
+
+    /* ---------------------- POWER: last 365d (rain, aridity, heuristic superbloom) ---------------------- */
+    async loadRainAridity() {
+      if (!window.Plotly) return alert('Plotly not loaded.');
+
+      const { lat, lng } = this.getParams();
+      // Build date window: last 365 calendar days
+      const end  = new Date();
+      const start= new Date(end.getTime() - 365*24*3600*1000);
+      const fmt  = (d) => d.toISOString().slice(0,10).replace(/-/g,'');
+      const startStr = fmt(start), endStr = fmt(end);
+
+      try {
+        const daily = await this._powerDaily(lat, lng, startStr, endStr, ['PRECTOTCORR','T2M']);
+
+        // Aggregate to weekly for a cleaner chart
+        const weeks = [];
+        let wkP = 0, wkTsum = 0, wkN = 0, lastWeekIdx = -1;
+        daily.dates.forEach((iso, idx) => {
+          const d = new Date(iso);
+          const weekIdx = Math.floor((d - start) / (7*24*3600*1000));
+          if (weekIdx !== lastWeekIdx && lastWeekIdx >= 0) {
+            weeks.push({week:lastWeekIdx, precip: wkP, t2m: (wkN? wkTsum/wkN : null)});
+            wkP = 0; wkTsum = 0; wkN = 0;
+          }
+          const p = Math.max(0, +daily.precip[idx] || 0);
+          const t = (Number.isFinite(daily.t2m[idx]) ? daily.t2m[idx] : null);
+          wkP += p;
+          if (t !== null) { wkTsum += t; wkN++; }
+          lastWeekIdx = weekIdx;
+        });
+        if (lastWeekIdx >= 0) weeks.push({week:lastWeekIdx, precip: wkP, t2m: (wkN? wkTsum/wkN : null)});
+
+        // Aridity index: share of last-90d rainfall over 365d total (higher => less arid recently)
+        const total365 = weeks.reduce((s,w)=>s+(w.precip||0),0);
+        const last90ms = end.getTime() - 90*24*3600*1000;
+        const r90 = daily.dates.reduce((s,iso,idx)=>{
+          const t = new Date(iso).getTime();
+          return s + (t>=last90ms ? Math.max(0, +daily.precip[idx]||0) : 0);
+        }, 0);
+        const aridityIdx = total365>0 ? Math.min(1, r90/total365) : 0;
+
+        const aridBar = document.getElementById('vi-arid-bar');
+        const aridLbl = document.getElementById('vi-arid-label');
+        if (aridBar) aridBar.style.width = (aridityIdx*100).toFixed(0) + '%';
+        if (aridLbl) aridLbl.textContent = `Aridity index (last 90d share of 365d rain): ${(aridityIdx*100).toFixed(0)}%`;
+
+        const superb = document.getElementById('vi-superbloom');
+        if (superb) {
+          let msg = 'Low probability';
+          if (total365 > 200 && aridityIdx > 0.55) msg = 'Moderate to High';
+          if (total365 > 350 && aridityIdx > 0.60) msg = 'High (rainfall-based)';
+          superb.textContent = `Superbloom prediction (heuristic): ${msg}`;
+        }
+
+        // Weekly bar (precip) + line (temp)
+        const xLabels = weeks.map(w => `W${w.week+1}`);
+        const bar = { x:xLabels, y:weeks.map(w=>w.precip||0), type:'bar', name:'Weekly Precip (mm)'};
+        const line= { x:xLabels, y:weeks.map(w=>w.t2m), type:'scatter', mode:'lines', yaxis:'y2', name:'Weekly Mean T2M (°C)'};
+        const layout = {
+          margin:{l:48,r:48,t:24,b:56},
+          yaxis:{title:'Precip (mm)'},
+          yaxis2:{title:'T (°C)', overlaying:'y', side:'right', showgrid:false},
+          legend:{orientation:'h', yanchor:'top', y:-0.25, xanchor:'center', x:0.5}
+        };
+        Plotly.newPlot('vi-rain-chart', [bar, line], layout, {displayModeBar:false});
+      } catch (e) {
+        console.error(e);
+        alert('POWER fetch failed.');
+      }
+    },
+
+    // POWER daily fetcher (supports multiple parameters)
+    async _powerDaily(lat, lng, startYYYYMMDD, endYYYYMMDD, params=['PRECTOTCORR']) {
+      const url = new URL('https://power.larc.nasa.gov/api/temporal/daily/point');
+      url.search = new URLSearchParams({
+        parameters: params.join(','),
+        community: 'AG',
+        longitude: String(lng),
+        latitude: String(lat),
+        start: startYYYYMMDD,
+        end:   endYYYYMMDD,
+        format: 'JSON'
+      }).toString();
+      const r = await fetch(url);
+      if (!r.ok) throw new Error('POWER daily error');
+      const j = await r.json();
+      const obj = j?.properties?.parameter || {};
+      const allDates = Object.keys(obj[params[0]] || {}).sort();
+      const out = { dates: allDates.map(d => `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}`) };
+      for (const p of params) {
+        const series = obj[p] || {};
+        out[p.toLowerCase()] = allDates.map(d => {
+          const v = Number(series[d]);
+          return Number.isFinite(v) ? (p==='PRECTOTCORR' ? Math.max(0, v) : v) : null; // clamp negatives for precip
+        });
+      }
+      out.precip = out.prectotcorr || [];
+      out.t2m    = out.t2m || [];
+      return out;
+    },
+
+    /* ---------------------- pollinators monthly plot ---------------------- */
+    async plotPollinators() {
+      if (!window.Plotly) return alert('Plotly not loaded.');
+
+      const input = document.getElementById('vi-pollinator-taxa');
+      const year  = parseInt(document.getElementById('vi-year')?.value || String(new Date().getFullYear()), 10);
+      if (!input || !input.value.trim()) return alert('Enter taxa IDs (comma-separated).');
+
+      const { lat, lng, radius } = this.getParams();
+      const taxIds = input.value.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>Number.isFinite(n));
+      if (!taxIds.length) return alert('Invalid taxa IDs.');
+
+      try {
+        const names  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        const months = Array.from({length:12},(_,i)=>i+1);
+
+        const traces = [];
+        for (const id of taxIds) {
+          const mc = await this._inatMonthly(id, lat, lng, radius, year);
+          traces.push({
+            x:names, y:months.map(m=>mc[m]||0),
+            type:'scatter', mode:'lines+markers', name:`Taxon ${id}`
+          });
+        }
+        const layout = {
+          margin:{l:48,r:48,t:24,b:56},
+          xaxis:{title:`Monthly pollinator counts in ${year}`},
+          yaxis:{title:'Observations'},
+          legend:{orientation:'h', yanchor:'top', y:-0.25, xanchor:'center', x:0.5}
+        };
+        Plotly.newPlot('vi-poll-chart', traces, layout, {displayModeBar:false});
+      } catch (e) {
+        console.error(e);
+        alert('Plot pollinator counts failed.');
+      }
+    },
+
+    /* ---------------------- external data wrappers ---------------------- */
+    async _inatMonthly(taxonId, lat, lng, radius, year) {
+      // Use month_of_year (1..12) which is stable and explicit
+      const u = new URL('https://api.inaturalist.org/v1/observations/histogram');
+      u.search = new URLSearchParams({
+        lat, lng, radius,
+        verifiable:'true', geo:'true',
+        taxon_id:String(taxonId),
+        date_field:'observed', interval:'month_of_year',
+        year:String(year)
+      }).toString();
+      const r = await fetch(u);
+      if (!r.ok) throw new Error('iNat histogram failed');
+      const j = await r.json();
+      const obj = j?.results?.month_of_year || {};
+      const out = {};
+      for (let m=1;m<=12;m++) out[m] = Number(obj[String(m)]||0);
+      return out;
+    },
+
+    async _powerMonthly(lat, lng, year) {
+      // Sum daily PRECTOTCORR into months; clamp negatives to 0
+      const u = new URL('https://power.larc.nasa.gov/api/temporal/daily/point');
+      u.search = new URLSearchParams({
+        parameters:'PRECTOTCORR', community:'AG',
+        longitude:String(lng), latitude:String(lat),
+        start:`${year}0101`, end:`${year}1231`, format:'JSON'
+      }).toString();
+      const r = await fetch(u);
+      if (!r.ok) return {};
+      const j = await r.json();
+      const daily = j?.properties?.parameter?.PRECTOTCORR || {};
+      const monthly = {};
+      for (const [ymd, vRaw] of Object.entries(daily)) {
+        const m = parseInt(String(ymd).slice(4,6), 10);
+        const v = Math.max(0, Number(vRaw) || 0);
+        monthly[m] = (monthly[m] || 0) + v;
+      }
+      return monthly;
+    }
+  };
+
+  VIAddon.init();
+})();
+
+
 
 
 
